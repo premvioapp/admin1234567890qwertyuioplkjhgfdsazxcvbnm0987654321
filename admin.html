@@ -384,6 +384,10 @@ function errMsg(e) {
   if (/Invalid login credentials/i.test(m)) return "Wrong email or password.";
   if (/Email not confirmed/i.test(m)) return "Please confirm your email first — check your inbox.";
   if (/already registered/i.test(m)) return "This email is already registered. Please log in.";
+  if (/not authorized|sending confirmation|Error sending/i.test(m)) return "Sign-up email could not be sent. (Owner: in Supabase → Authentication → Sign In / Providers → Email, turn OFF \"Confirm email\".)";
+  if (/email.*invalid|invalid.*email|validate email/i.test(m)) return "This email address was rejected. Use a real address like name@gmail.com. (Owner: in Supabase turn OFF \"Confirm email\" if this keeps happening.)";
+  if (/rate limit|too many/i.test(m)) return "Too many attempts. Please wait a few minutes and try again.";
+  if (/Database error/i.test(m)) return "Login database error — run 4-fix-admin-login.sql in Supabase. (" + m + ")";
   if (/Failed to fetch/i.test(m)) return "No internet connection. Please try again.";
   return m.replace(/^.*?ERROR:\s*/, "");
 }
