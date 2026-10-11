@@ -357,9 +357,12 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
+// Each panel keeps its own login, so logging out of one never logs out the others.
+const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent\.html/i.test(location.pathname) ? "agent" : "customer";
 const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "premvio-" + PV_PANEL + "-login" },
 });
+const pvSignOut = () => sb.auth.signOut({ scope: "local" });
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -545,7 +548,7 @@ function staffLogin(container, roleLabel, allowed, onOk) {
       if (error) { cap.reset(); if (/Invalid login/i.test(error.message)) throw new Error("Wrong ID or password."); throw error; }
       const p = await getMyProfile();
       if (!p || !allowed.includes(p.role) || p.blocked) {
-        await sb.auth.signOut();
+        await pvSignOut();
         throw new Error(`This account does not have ${roleLabel.toLowerCase()} access.`);
       }
       onOk(p);
@@ -606,7 +609,7 @@ sb.auth.getSession().then(async ({ data }) => {
     try {
       const p = await getMyProfile();
       if (p && p.role === "admin" && !p.blocked) return start(p);
-      await sb.auth.signOut();
+      await pvSignOut();
     } catch (e) {}
   }
   staffLogin(root, "Admin", ["admin"], start);
@@ -646,7 +649,7 @@ function start(p) {
   </div>`;
   $$(".side-link[data-s]").forEach((b) => (b.onclick = () => { location.hash = b.dataset.s; $("#side").classList.remove("open"); }));
   $("#menu").onclick = () => $("#side").classList.toggle("open");
-  $("#outBtn").onclick = async () => { await disablePush().catch(() => {}); await sb.auth.signOut(); location.hash = ""; location.reload(); };
+  $("#outBtn").onclick = async () => { await disablePush().catch(() => {}); await pvSignOut(); location.hash = ""; location.reload(); };
   $("#pushBtn").onclick = async () => { if (await enablePush()) toast("You'll get push alerts for new orders and KYC.", "success"); };
   window.onhashchange = route;
   AD.channel = sb.channel("admin")
