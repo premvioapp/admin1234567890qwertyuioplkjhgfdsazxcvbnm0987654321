@@ -1,7 +1,7 @@
 /* PREMVIO service worker — offline shell + push notifications */
-const CACHE = "premvio-v2";
-const SHELL = ["./", "./index.html", "./css/style.css", "./js/config.js", "./js/common.js", "./js/customer.js",
-  "./manifest.json", "./img/logo.png", "./img/icon-192.png"];
+const CACHE = "premvio-v3";
+const SHELL = ["./", "./index.html", 
+  "./manifest.json", "./icon-192.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
@@ -31,8 +31,8 @@ self.addEventListener("push", (e) => {
   try { d = e.data.json(); } catch (err) { d = { title: "Premvio", body: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(d.title || "Premvio", {
     body: d.body || "",
-    icon: "img/icon-192.png",
-    badge: "img/icon-192.png",
+    icon: "icon-192.png",
+    badge: "icon-192.png",
     data: { url: d.url || "./" },
     vibrate: [80, 40, 80],
   }));
