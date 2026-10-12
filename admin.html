@@ -975,16 +975,37 @@ function featureForm(f = {}) {
   });
 }
 
+/* ---------- shared: sorting + balance summary for people lists ---------- */
+const PEOPLE_SORTS = [["new", "Newest first"], ["high", "Highest balance"], ["low", "Lowest balance"], ["name", "Name A–Z"]];
+function sortQuery(q, how) {
+  if (how === "high") return q.order("balance", { ascending: false });
+  if (how === "low") return q.order("balance", { ascending: true });
+  if (how === "name") return q.order("full_name", { ascending: true });
+  return q.order("created_at", { ascending: false });
+}
+function sortSelect(cur) {
+  return `<select name="sort" style="width:auto">${PEOPLE_SORTS.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+}
+function balanceSummary(list, label) {
+  const total = list.reduce((a, u) => a + Number(u.balance), 0);
+  const withMoney = list.filter((u) => Number(u.balance) > 0).length;
+  return `<div class="stats mb">
+    <div class="stat"><div class="k">${label}</div><div class="v">${list.length}</div></div>
+    <div class="stat"><div class="k">Total balance</div><div class="v" style="color:var(--gold)">${money(total)}</div></div>
+    <div class="stat"><div class="k">With money / zero</div><div class="v">${withMoney} / ${list.length - withMoney}</div></div></div>`;
+}
+
 /* ---------------- CUSTOMERS ---------------- */
 async function customers(v) {
   if (hashArg()) return personView(v, hashArg(), "customers");
-  let q = sb.from("profiles").select("*").eq("role", "customer").order("created_at", { ascending: false }).limit(300);
+  let q = sortQuery(sb.from("profiles").select("*").eq("role", "customer"), AD.custSort || "new").limit(1000);
   const term = AD.userQ.trim().replace(/[%,()]/g, "");
   if (term) q = q.or(`member_id.ilike.%${term}%,full_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%`);
   const { data, error } = await q;
   if (error) throw error;
-  v.innerHTML = `<form class="toolbar" id="us"><input name="q" placeholder="Search name, Member ID, email, phone" value="${esc(AD.userQ)}">
-    <button class="btn">Search</button></form>
+  v.innerHTML = `${balanceSummary(data, term ? "Customers found" : "Customers")}
+    <form class="toolbar" id="us"><input name="q" placeholder="Search name, Member ID, email, phone" value="${esc(AD.userQ)}">
+    ${sortSelect(AD.custSort || "new")}<button class="btn">Search</button></form>
     ${table(["Customer", "Email / phone", "Country", "Balance", "KYC", "Joined", ""], data.map((u) => `<tr>
       <td>${who(u)}${u.blocked ? ` <span class="badge blocked">blocked</span>` : ""}</td>
       <td class="small">${esc(u.email)}<div class="muted">${esc(u.phone || "")}</div></td><td>${esc(u.country || "")}</td>
@@ -994,6 +1015,7 @@ async function customers(v) {
         <button class="btn sm withdraw" data-wd="${u.id}">Withdraw</button>
         <a class="btn sm soft" href="#customers/${u.id}">Open</a></td></tr>`), "No customers found")}`;
   $("#us").onsubmit = (e) => { e.preventDefault(); AD.userQ = e.target.q.value; route(); };
+  $("#us").sort.onchange = (e) => { AD.custSort = e.target.value; route(); };
   $$("[data-dep]", v).forEach((b) => (b.onclick = () => moneyModal(data.find((u) => u.id === b.dataset.dep), "deposit")));
   $$("[data-wd]", v).forEach((b) => (b.onclick = () => moneyModal(data.find((u) => u.id === b.dataset.wd), "withdraw")));
 }
@@ -1001,13 +1023,14 @@ async function customers(v) {
 /* ---------------- AGENTS & ADMINS ---------------- */
 async function agents(v) {
   if (hashArg()) return personView(v, hashArg(), "agents");
-  let q = sb.from("profiles").select("*").in("role", ["agent", "admin"]).order("role").order("created_at", { ascending: false });
+  let q = sortQuery(sb.from("profiles").select("*").in("role", ["agent", "admin"]), AD.staffSort || "new");
   const term = AD.staffQ.trim().replace(/[%,()]/g, "");
   if (term) q = q.or(`member_id.ilike.%${term}%,full_name.ilike.%${term}%,city.ilike.%${term}%,phone.ilike.%${term}%`);
   const { data, error } = await q;
   if (error) throw error;
-  v.innerHTML = `<form class="toolbar" id="ss"><input name="q" placeholder="Search ID, name, city, phone" value="${esc(AD.staffQ)}">
-    <button class="btn soft">Search</button><button type="button" class="btn" id="addStaff">${ICONS.plus} Add agent / admin</button></form>
+  v.innerHTML = `${balanceSummary(data.filter((u) => u.role === "agent"), "Agents")}
+    <form class="toolbar" id="ss"><input name="q" placeholder="Search ID, name, city, phone" value="${esc(AD.staffQ)}">
+    ${sortSelect(AD.staffSort || "new")}<button class="btn soft">Search</button><button type="button" class="btn" id="addStaff">${ICONS.plus} Add agent / admin</button></form>
     <p class="small muted">Only you can create agent and admin IDs. They log in with their ID and password (agents at <b>agent.html</b>, admins at <b>admin.html</b>).</p>
     ${table(["ID / name", "Role", "Location", "Phone", "Balance", "Status", ""], data.map((u) => `<tr>
       <td>${who(u)}</td><td><span class="badge ${u.role}">${u.role}</span></td>
@@ -1017,6 +1040,7 @@ async function agents(v) {
         <button class="btn sm withdraw" data-wd="${u.id}">Withdraw</button>
         <a class="btn sm soft" href="#agents/${u.id}">History</a></td></tr>`), "No agents yet — add one")}`;
   $("#ss").onsubmit = (e) => { e.preventDefault(); AD.staffQ = e.target.q.value; route(); };
+  $("#ss").sort.onchange = (e) => { AD.staffSort = e.target.value; route(); };
   $("#addStaff").onclick = () => staffForm();
   $$("[data-dep]", v).forEach((b) => (b.onclick = () => moneyModal(data.find((u) => u.id === b.dataset.dep), "deposit")));
   $$("[data-wd]", v).forEach((b) => (b.onclick = () => moneyModal(data.find((u) => u.id === b.dataset.wd), "withdraw")));
@@ -1090,7 +1114,8 @@ async function personView(v, id, back) {
     <div class="row wrap mt">
       ${staff ? `<button class="btn sm soft" id="edit">Edit details</button><button class="btn sm soft" id="cid">Change login ID</button><button class="btn sm soft" id="pw">Reset password</button>
         <button class="btn sm soft" id="role">Make ${u.role === "agent" ? "admin" : "agent"}</button>` : ""}
-      ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>` : ""}
+      ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>
+        <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}
     </div>
   </div>
   <div class="stats mt">${stats.map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="font-size:1.2rem">${val}</div></div>`).join("")}</div>
@@ -1140,6 +1165,28 @@ async function personView(v, id, back) {
     const { error } = await sb.rpc("admin_set_role", { p_user: u.id, p_role: to });
     if (error) return toast(errMsg(error), "error");
     toast("Role changed.", "success"); reload();
+  };
+  if ($("#del")) $("#del").onclick = () => {
+    const problems = [];
+    if (Number(u.balance) !== 0) problems.push(`Balance is <b>${money(u.balance)}</b> — use the red <b>Withdraw</b> button to bring it to 0 first.`);
+    openModal(`<h2 style="color:var(--red)">Delete ${esc(u.full_name)}?</h2>
+      <p>This <b>permanently</b> deletes account <b class="mono">${esc(u.member_id)}</b>, its login and its history. It cannot be undone.</p>
+      ${problems.length ? `<div class="card" style="box-shadow:none;border-color:var(--red)">${problems.join("<br>")}</div>` : ""}
+      <p class="small muted">Accounts with money, an active withdrawal code or pending orders can't be deleted. To stop someone without deleting, use <b>Block</b>.</p>
+      <form id="delf"><label>Type <b class="mono">${esc(u.member_id)}</b> to confirm</label>
+      <input name="confirm" autocomplete="off" spellcheck="false" required>
+      <button class="btn danger block mt" ${problems.length ? "disabled" : ""}>Delete permanently</button></form>`, (m) => {
+      $("#delf", m).onsubmit = (e) => {
+        e.preventDefault();
+        if (e.target.confirm.value.trim().toUpperCase() !== String(u.member_id).toUpperCase()) return toast("The ID you typed doesn't match.", "error");
+        busy($("button", e.target), async () => {
+          const { error } = await sb.rpc("admin_delete_user", { p_user: u.id });
+          if (error) throw error;
+          closeModal(); toast(`Account ${u.member_id} deleted.`, "success");
+          location.hash = back;
+        });
+      };
+    });
   };
   if ($("#blk")) $("#blk").onclick = async () => {
     if (!(await confirmBox(u.blocked ? "Unblock?" : "Block account?", u.blocked ? "They can use the app again." : "They won't be able to use the app.", u.blocked ? "Unblock" : "Block", !u.blocked))) return;
