@@ -531,8 +531,8 @@ function staffLogin(container, roleLabel, allowed, onOk) {
     <div class="card">
       <h2 class="center">${esc(roleLabel)} login</h2>
       <form id="slForm">
-        <label>${esc(roleLabel)} ID</label><input name="email" required autocomplete="username" placeholder="${roleLabel === "Admin" ? "AD1001" : "AG1002"}" style="text-transform:uppercase">
-        <label>Password</label><input type="password" name="password" required autocomplete="current-password">
+        <label>${esc(roleLabel)} ID</label><input name="email" required autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase">
+        <label>Password</label><input type="password" name="password" required autocomplete="off">
         <label>Security check</label><div id="slCap"></div>
         <button class="btn block mt">Log in</button>
       </form>
@@ -594,6 +594,35 @@ const COUNTRIES = "Nepal|India|Bangladesh|Bhutan|Pakistan|Sri Lanka|Maldives|Afg
 function countryOptions(selected = "Nepal") {
   return COUNTRIES.map((c) => `<option ${c === selected ? "selected" : ""}>${esc(c)}</option>`).join("");
 }
+/* ---------- date range (calendar) for history pages ---------- */
+function ymd(d) { const z = new Date(d.getTime() - d.getTimezoneOffset() * 6e4); return z.toISOString().slice(0, 10); }
+function defaultRange(days = 30) { const to = new Date(); return { from: ymd(new Date(to.getTime() - (days - 1) * 864e5)), to: ymd(to) }; }
+function rangeISO(r) {
+  const a = new Date(r.from + "T00:00:00"), b = new Date(new Date(r.to + "T00:00:00").getTime() + 864e5);
+  return [a.toISOString(), b.toISOString()];
+}
+function rangeBar(r) {
+  return `<div class="toolbar range-bar">
+    <label class="row small" style="margin:0;gap:6px">From <input type="date" data-r="from" value="${r.from}" max="${r.to}" style="width:auto"></label>
+    <label class="row small" style="margin:0;gap:6px">To <input type="date" data-r="to" value="${r.to}" min="${r.from}" max="${ymd(new Date())}" style="width:auto"></label>
+    <button type="button" class="btn sm soft" data-preset="1">Today</button>
+    <button type="button" class="btn sm soft" data-preset="7">7 days</button>
+    <button type="button" class="btn sm soft" data-preset="30">30 days</button>
+    <button type="button" class="btn sm soft" data-preset="90">90 days</button>
+  </div>`;
+}
+// wire a rangeBar inside `root`: calls onChange(newRange) when dates change
+function bindRange(root, r, onChange) {
+  $$("[data-r]", root).forEach((inp) => (inp.onchange = () => {
+    const nr = { ...r, [inp.dataset.r]: inp.value };
+    if (!nr.from || !nr.to) return;
+    if (nr.from > nr.to) return toast("'From' must be before 'To'.", "error");
+    onChange(nr);
+  }));
+  $$("[data-preset]", root).forEach((b) => (b.onclick = () => onChange(defaultRange(Number(b.dataset.preset)))));
+}
+function fmtDay(s) { return new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
+
 function copyText(t) {
   navigator.clipboard?.writeText(t).then(() => toast("Copied: " + t, "success"), () => toast(t));
 }
@@ -692,7 +721,7 @@ function chips(list, cur, attr) {
 }
 function who(p) { return p ? `${esc(p.full_name)}<div class="small muted mono">${esc(p.member_id)}</div>` : "—"; }
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
-const TX_LABEL = { load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Loaded customer", agent_payout: "Paid withdrawal" };
+const TX_LABEL = { load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -995,7 +1024,9 @@ async function agents(v) {
 function staffForm(u) {
   const edit = !!u;
   openModal(`<h2>${edit ? "Edit " + esc(u.member_id) : "Add agent / admin"}</h2><form id="sf">
-    ${edit ? "" : `<label>Role</label><select name="srole"><option value="agent">Agent</option><option value="admin">Admin</option></select>`}
+    ${edit ? "" : `<label>Role</label><select name="srole"><option value="agent">Agent</option><option value="admin">Admin</option></select>
+    <label>Login ID <span class="muted">(optional — leave empty for automatic)</span></label>
+    <input name="login_id" maxlength="20" autocomplete="off" spellcheck="false" style="text-transform:uppercase" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{2,19}" title="3–20 letters or numbers, no spaces">`}
     <label>Full name</label><input name="full_name" required maxlength="80" value="${esc(u?.full_name || "")}">
     <label>Phone</label><input name="phone" maxlength="20" value="${esc(u?.phone || "")}">
     <div class="grid-2"><div><label>Country</label><select name="country">${countryOptions(u?.country || "Nepal")}</select></div>
@@ -1014,7 +1045,8 @@ function staffForm(u) {
           closeModal(); toast("Saved.", "success"); route(); return;
         }
         const { data, error } = await sb.rpc("admin_create_staff", { p_role: f.srole.value, p_full_name: f.full_name.value, p_password: f.password.value,
-          p_phone: f.phone.value, p_country: f.country.value, p_city: f.city.value, p_street: f.street.value });
+          p_phone: f.phone.value, p_country: f.country.value, p_city: f.city.value, p_street: f.street.value,
+          p_login_id: f.login_id.value.trim() || null });
         if (error) throw error;
         const page = f.srole.value === "agent" ? "agent.html" : "admin.html";
         openModal(`<div class="empty"><div class="big">✅</div><h2>${f.srole.value === "agent" ? "Agent" : "Admin"} created</h2>
@@ -1031,9 +1063,12 @@ function staffForm(u) {
 
 /* ---------- one person: details + money + full history ---------- */
 async function personView(v, id, back) {
+  if (!AD.pRange || AD.pId !== id) { AD.pRange = defaultRange(30); AD.pId = id; }
+  const [from, to] = rangeISO(AD.pRange);
   const [{ data: u, error }, { data: tx }] = await Promise.all([
     sb.from("profiles").select("*").eq("id", id).single(),
-    sb.from("transactions").select("*, profiles(full_name, member_id)").or(`user_id.eq.${id},actor_id.eq.${id}`).order("created_at", { ascending: false }).limit(500),
+    sb.from("transactions").select("*, profiles(full_name, member_id)").or(`user_id.eq.${id},actor_id.eq.${id}`)
+      .gte("created_at", from).lt("created_at", to).order("created_at", { ascending: false }).limit(2000),
   ]);
   if (error) throw error;
   const staff = u.role !== "customer";
@@ -1053,13 +1088,14 @@ async function personView(v, id, back) {
     </div>
     <div class="money-actions mt"><button class="btn deposit" id="dep">Deposit</button><button class="btn withdraw" id="wd">Withdraw</button></div>
     <div class="row wrap mt">
-      ${staff ? `<button class="btn sm soft" id="edit">Edit details</button><button class="btn sm soft" id="pw">Reset password</button>
+      ${staff ? `<button class="btn sm soft" id="edit">Edit details</button><button class="btn sm soft" id="cid">Change login ID</button><button class="btn sm soft" id="pw">Reset password</button>
         <button class="btn sm soft" id="role">Make ${u.role === "agent" ? "admin" : "agent"}</button>` : ""}
       ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>` : ""}
     </div>
   </div>
   <div class="stats mt">${stats.map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="font-size:1.2rem">${val}</div></div>`).join("")}</div>
-  <h2 class="mt">History</h2>
+  <h2 class="mt">History <span class="small muted">${fmtDay(AD.pRange.from)} – ${fmtDay(AD.pRange.to)}</span></h2>
+  ${rangeBar(AD.pRange)}
   ${table(["Date", "Type", "Amount", "Balance after", "Details"], (tx || []).map((t) => {
     const mine = t.user_id === id;
     return `<tr><td class="small">${fmtDate(t.created_at)}</td>
@@ -1068,6 +1104,21 @@ async function personView(v, id, back) {
       <td class="small">${esc(t.description || "")}</td></tr>`;
   }), "No history yet")}`;
   const reload = () => personView(v, id, back);
+  bindRange(v, AD.pRange, (nr) => { AD.pRange = nr; reload(); });
+  if ($("#cid")) $("#cid").onclick = () => openModal(`<h2>Change login ID</h2>
+      <p class="muted small">Current ID: <b class="mono">${esc(u.member_id)}</b>. The password stays the same.${u.id === AD.me.id ? " You will need to log in again with the new ID." : ""}</p>
+      <form id="cidf"><label>New login ID</label><input name="nid" required maxlength="20" autocomplete="off" spellcheck="false" style="text-transform:uppercase">
+      <button class="btn block mt">Change ID</button></form>`, (m) => {
+    $("#cidf", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { data, error } = await sb.rpc("admin_change_staff_id", { p_user: u.id, p_new_id: e.target.nid.value });
+        if (error) throw error;
+        closeModal(); toast(`Login ID changed to ${data}.`, "success");
+        if (u.id === AD.me.id) { await pvSignOut(); location.reload(); } else reload();
+      });
+    };
+  });
   $("#dep").onclick = () => moneyModal(u, "deposit", reload);
   $("#wd").onclick = () => moneyModal(u, "withdraw", reload);
   if ($("#edit")) $("#edit").onclick = () => staffForm(u);
@@ -1151,19 +1202,28 @@ async function withdrawals(v) {
 
 /* ---------------- TRANSACTIONS ---------------- */
 async function transactions(v) {
-  const since = new Date(Date.now() - 30 * 864e5).toISOString();
-  let q = sb.from("transactions").select("*, profiles(id, full_name, member_id, role)").gte("created_at", since).order("created_at", { ascending: false }).limit(500);
+  if (!AD.txRange) AD.txRange = defaultRange(30);
+  const [from, to] = rangeISO(AD.txRange);
+  let q = sb.from("transactions").select("*, profiles(id, full_name, member_id, role)")
+    .gte("created_at", from).lt("created_at", to).order("created_at", { ascending: false }).limit(2000);
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
   if (error) throw error;
   const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"]];
-  v.innerHTML = `<p class="muted small">Last 30 days, newest first. Click a name to see that person's full history.</p>` + chips(types, AD.txType, "tt") +
+  const inSum = data.filter((t) => t.amount > 0).reduce((a, t) => a + Number(t.amount), 0);
+  const outSum = data.filter((t) => t.amount < 0).reduce((a, t) => a - Number(t.amount), 0);
+  v.innerHTML = rangeBar(AD.txRange) + chips(types, AD.txType, "tt") +
+    `<div class="stats mb">
+      <div class="stat"><div class="k">Transactions · ${fmtDay(AD.txRange.from)} – ${fmtDay(AD.txRange.to)}</div><div class="v">${data.length}${data.length >= 2000 ? "+" : ""}</div></div>
+      <div class="stat"><div class="k">Money in (+)</div><div class="v" style="color:var(--green)">${money(inSum)}</div></div>
+      <div class="stat"><div class="k">Money out (−)</div><div class="v" style="color:var(--red)">${money(outSum)}</div></div></div>` +
     table(["Date", "User", "Type", "Amount", "Balance after", "Details"], data.map((t) => `<tr>
       <td class="small">${fmtDate(t.created_at)}</td>
       <td><a href="#${t.profiles?.role === "customer" ? "customers" : "agents"}/${t.user_id}">${who(t.profiles)}</a></td>
       <td><span class="badge">${esc(TX_LABEL[t.type] || t.type)}</span></td>
-      <td>${amt(Number(t.amount))}</td><td>${money(t.balance_after)}</td><td class="small">${esc(t.description || "")}</td></tr>`), "No transactions");
+      <td>${amt(Number(t.amount))}</td><td>${money(t.balance_after)}</td><td class="small">${esc(t.description || "")}</td></tr>`), "No transactions in these dates");
   $$("[data-tt]", v).forEach((c) => (c.onclick = () => { AD.txType = c.dataset.tt; route(); }));
+  bindRange(v, AD.txRange, (nr) => { AD.txRange = nr; route(); });
 }
 
 /* ---------------- NOTIFICATIONS ---------------- */
