@@ -467,6 +467,78 @@ td .btn + .btn { margin-left: 6px; }
   background: linear-gradient(var(--card-2), var(--card-2)) padding-box, var(--grad) border-box; border: 3px solid transparent;
   box-shadow: 0 0 30px rgba(20, 217, 164, .25); }
 
+/* ---------- customer: balance pill (top right) + wallet buttons + ID ---------- */
+.bal-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 5px 5px 12px; border-radius: 999px; text-decoration: none;
+  background: var(--card); border: 1px solid var(--line); color: var(--gold); font-weight: 800; font-size: .85rem; white-space: nowrap;
+  transition: border-color .15s, transform .1s; }
+.bal-pill:hover { border-color: var(--gold); } .bal-pill:active { transform: scale(.97); }
+.bal-pill i { font-style: normal; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 1.15rem;
+  background: linear-gradient(135deg, #2ee59d, #16b46f); color: #04220f; font-weight: 900; box-shadow: 0 4px 12px rgba(34, 201, 131, .35); }
+.wallet-btns { display: grid; gap: 10px; }
+.wbtn { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 14px; text-decoration: none; color: var(--text);
+  border: 1px solid; transition: transform .1s, filter .15s; }
+.wbtn:active { transform: scale(.99); } .wbtn:hover { filter: brightness(1.1); }
+.wbtn .wi { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; flex: 0 0 auto; }
+.wbtn .wi svg { width: 22px; height: 22px; }
+.wbtn b { display: block; font-size: 1.02rem; } .wbtn small { color: var(--muted); }
+.wbtn em { margin-left: auto; font-style: normal; font-size: 1.6rem; opacity: .6; }
+.wbtn.dep { background: rgba(34, 201, 131, .08); border-color: rgba(34, 201, 131, .3); }
+.wbtn.dep .wi { background: var(--green); color: #03200f; }
+.wbtn.wd { background: rgba(255, 93, 108, .08); border-color: rgba(255, 93, 108, .3); }
+.wbtn.wd .wi { background: var(--red); color: #fff; }
+.id-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); }
+.id-big { font-size: 1.25rem; font-weight: 800; letter-spacing: .06em; }
+@media (max-width: 360px) { .topbar .small.muted#hello { display: none; } .bal-pill { font-size: .78rem; } }
+
+/* ---------- cart ---------- */
+.nav-item { position: relative; }
+.nav-badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--gold); color: #241600; font-style: normal; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+.product { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; touch-action: manipulation; transition: transform .15s, border-color .15s; }
+.product.pressing { transform: scale(.95); border-color: var(--gold); }
+.press-hint { margin: -6px 0 10px; }
+.buy-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: 10px; }
+.qty-row { display: grid; grid-template-columns: 48px 1fr 48px; gap: 8px; }
+.qty-row input { text-align: center; font-weight: 800; font-size: 1.1rem; }
+.qbtn { border-radius: 12px; border: 1px solid var(--line); background: var(--card-2); color: var(--text); font-size: 1.4rem; font-weight: 700; cursor: pointer; }
+.cart-list { padding: 4px 14px; }
+.cart-item { display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.cart-item:last-child { border-bottom: 0; }
+.cart-item.bad { opacity: .8; }
+.cart-ph { width: 56px; height: 56px; border-radius: 12px; overflow: hidden; background: var(--card-2); display: grid; place-items: center; flex: 0 0 auto; }
+.cart-ph img { width: 100%; height: 100%; object-fit: cover; }
+.cart-sub { font-weight: 800; color: var(--gold); white-space: nowrap; }
+.add-more { display: block; text-align: center; padding: 12px; margin: 10px 0; border: 1px dashed var(--line); border-radius: 14px; font-weight: 700; }
+.cart-sum .row { padding: 6px 0; }
+.cart-sum .total-row { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 12px; font-size: 1.15rem; }
+.cart-sum .total-row b { color: var(--gold); font-size: 1.3rem; }
+.cart-item .btn { white-space: nowrap; } .cart-item .grow { min-width: 0; }
+
+/* ---------- payment methods ---------- */
+.pm-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.pm-card:last-child { border-bottom: 0; } .pm-card.off { opacity: .55; }
+.pm-logo { width: 52px; height: 52px; border-radius: 12px; background: #fff; display: grid; place-items: center; overflow: hidden; flex: 0 0 auto;
+  border: 1px solid var(--line); color: #0c1530; font-weight: 800; font-size: .8rem; }
+.pm-logo img { width: 100%; height: 100%; object-fit: contain; }
+.pm-logo.big { width: 72px; height: 72px; }
+.pm-details { white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pm-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---------- customer: payment method logos (3 per row) ---------- */
+.pm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pm-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 6px; border-radius: 14px; cursor: pointer;
+  background: var(--card); border: 2px solid var(--line); color: var(--text); font: inherit; transition: border-color .15s, transform .1s; }
+.pm-tile:active { transform: scale(.97); }
+.pm-tile.on { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31, 162, 255, .15); }
+.pm-tile .pm-logo { width: 54px; height: 54px; }
+.pm-name { font-size: .82rem; font-weight: 700; text-align: center; line-height: 1.2; word-break: break-word; }
+.pm-panel .pm-logo { width: 46px; height: 46px; }
+.pm-info { white-space: pre-wrap; padding: 12px; border-radius: 12px; background: var(--card-2); font-weight: 600; border-left: 3px solid var(--blue); }
+/* nicer file pickers (screenshots, KYC photo, logos) */
+input[type="file"] { padding: 8px; cursor: pointer; }
+input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin-right: 12px; border-radius: 10px; cursor: pointer;
+  background: var(--grad); color: #fff; font: inherit; font-weight: 700; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -912,7 +984,10 @@ const SECTIONS = [
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "agents", label: "Agents & admins", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
-  { id: "withdrawals", label: "Withdrawal codes", icon: ICONS.wallet, count: "pending_withdrawals" },
+  { id: "deposits", label: "Deposit requests", icon: ICONS.cash, count: "pending_deposits" },
+  { id: "payouts", label: "Withdrawal requests", icon: ICONS.wallet, count: "pending_payouts" },
+  { id: "withdrawals", label: "PremvioCash codes", icon: ICONS.wallet, count: "pending_withdrawals" },
+  { id: "methods", label: "Payment methods", icon: ICONS.grid },
   { id: "transactions", label: "Transactions", icon: ICONS.list },
   { id: "notify", label: "Send notification", icon: ICONS.bell },
   { id: "settings", label: "Settings", icon: ICONS.gear },
@@ -969,7 +1044,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, transactions, notify, settings }[s];
+  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, deposits, payouts, methods, transactions, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -981,7 +1056,7 @@ function chips(list, cur, attr) {
 }
 function who(p) { return p ? `${esc(p.full_name)}<div class="small muted mono">${esc(p.member_id)}</div>` : "—"; }
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
-const TX_LABEL = { load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)" };
+const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -1022,7 +1097,7 @@ async function dashboard(v) {
   const max = Math.max(1, ...(daily || []).map((d) => Number(d.sales)));
   v.innerHTML = `<div class="stats">
     ${[["Sales today", money(s.sales_today)], ["Deposits today", money(s.loads_today)], ["Pending orders", s.pending_orders],
-       ["Pending KYC", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
+       ["Deposit requests", s.pending_deposits ?? 0], ["Withdrawal requests", s.pending_payouts ?? 0], ["Pending KYC", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
        ["Agents", s.agents], ["Customer balances", money(s.customer_balance)], ["Agent balances", money(s.agent_balance)]]
       .map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v">${val ?? 0}</div></div>`).join("")}
   </div>
@@ -1644,6 +1719,235 @@ async function settings(v) {
       toast("Settings saved.", "success");
     });
   };
+}
+
+
+/* =====================================================================
+   PAYMENT METHODS (deposit + withdrawal options with logos)
+   ===================================================================== */
+function mountFieldBuilder(box, fields, emptyText) {
+  const draw = () => {
+    box.innerHTML = fields.length ? fields.map((fd, i) => `<div class="field-row" data-i="${i}">
+      <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="Field name, e.g. eSewa ID" required>
+        <select data-k="type" style="width:auto">${FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="row mt">
+        ${fd.type === "select" ? `<input class="grow" data-k="options" value="${esc((fd.options || []).join(", "))}" placeholder="Options, separated by commas">`
+          : `<input class="grow" data-k="placeholder" value="${esc(fd.placeholder || "")}" placeholder="Hint shown inside the box (optional)">`}
+        <label class="row small" style="margin:0;white-space:nowrap;color:var(--text)"><input type="checkbox" data-k="required" ${fd.required ? "checked" : ""} style="width:auto"> Required</label>
+      </div>
+      <div class="row mt" style="justify-content:flex-end">
+        <button type="button" class="btn sm soft" data-mv="-1" ${i === 0 ? "disabled" : ""}>↑</button>
+        <button type="button" class="btn sm soft" data-mv="1" ${i === fields.length - 1 ? "disabled" : ""}>↓</button>
+        <button type="button" class="btn sm danger" data-rm>Remove</button></div>
+    </div>`).join("") : `<p class="small muted">${emptyText}</p>`;
+  };
+  const sync = () => $$(".field-row", box).forEach((row) => {
+    const fd = fields[row.dataset.i];
+    fd.label = $('[data-k="label"]', row).value.trim();
+    fd.type = $('[data-k="type"]', row).value;
+    fd.required = $('[data-k="required"]', row).checked;
+    const o = $('[data-k="options"]', row), ph = $('[data-k="placeholder"]', row);
+    if (o) fd.options = o.value.split(",").map((x) => x.trim()).filter(Boolean);
+    if (ph) fd.placeholder = ph.value.trim();
+  });
+  box.onchange = (e) => { if (e.target.dataset.k === "type") { sync(); draw(); } };
+  box.onclick = (e) => {
+    const row = e.target.closest(".field-row"); if (!row) return;
+    const i = Number(row.dataset.i);
+    if (e.target.dataset.mv) { sync(); const j = i + Number(e.target.dataset.mv); [fields[i], fields[j]] = [fields[j], fields[i]]; draw(); }
+    if (e.target.hasAttribute("data-rm")) { sync(); fields.splice(i, 1); draw(); }
+  };
+  draw();
+  return {
+    add: () => { sync(); fields.push({ id: newFieldId(), label: "", type: "text", required: true }); draw(); $$('[data-k="label"]', box).pop()?.focus(); },
+    collect: () => {
+      sync();
+      for (const fd of fields) {
+        if (!fd.label) throw new Error("Every form field needs a name.");
+        if (fd.type === "select" && !(fd.options || []).length) throw new Error(`Add options for "${fd.label}".`);
+        if (fd.type !== "select") delete fd.options;
+      }
+      return fields;
+    },
+  };
+}
+
+async function methods(v) {
+  const { data, error } = await sb.from("payment_methods").select("*").order("kind").order("sort").order("id");
+  if (error) throw error;
+  const card = (m) => `<div class="pm-card ${m.active ? "" : "off"}">
+    <div class="pm-logo">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>${esc((m.name || "?").slice(0, 2).toUpperCase())}</span>`}</div>
+    <div class="grow"><b>${esc(m.name)}</b> ${m.code === "premviocash" ? `<span class="badge agent">built-in</span>` : ""} ${m.active ? "" : `<span class="badge cancelled">hidden</span>`}
+      <div class="small muted pm-details">${esc(m.details || "")}</div>
+      <div class="small muted">${m.min_amount != null ? "Min " + money(m.min_amount) : ""}${m.max_amount != null ? " · Max " + money(m.max_amount) : ""}
+        ${(m.fields || []).length ? " · Fields: " + m.fields.map((f) => esc(f.label)).join(", ") : ""}</div></div>
+    <div class="pm-actions"><button class="btn sm soft" data-edit="${m.id}">Edit</button>
+      ${m.code === "premviocash" ? "" : `<button class="btn sm ghost" data-del="${m.id}">Delete</button>`}</div></div>`;
+  const dep = data.filter((m) => m.kind === "deposit"), wd = data.filter((m) => m.kind === "withdraw");
+  v.innerHTML = `<p class="muted small">Customers see these as logos (3 per row) on the Deposit and Withdraw screens. Upload a square logo for best results.</p>
+    <div class="card"><div class="row between"><h2 style="margin:0;color:var(--green)">Deposit methods</h2>
+      <button class="btn sm" data-add="deposit">${ICONS.plus} Add deposit method</button></div>
+      <div class="mt">${dep.map(card).join("") || `<div class="empty">No deposit methods — add one (e.g. eSewa, Khalti, bank, another Telegram ID)</div>`}</div></div>
+    <div class="card"><div class="row between"><h2 style="margin:0;color:var(--red)">Withdrawal methods</h2>
+      <button class="btn sm" data-add="withdraw">${ICONS.plus} Add withdrawal method</button></div>
+      <div class="mt">${wd.map(card).join("")}</div></div>`;
+  $$("[data-add]", v).forEach((b) => (b.onclick = () => methodForm({ kind: b.dataset.add })));
+  $$("[data-edit]", v).forEach((b) => (b.onclick = () => methodForm(data.find((m) => m.id == b.dataset.edit))));
+  $$("[data-del]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Delete this method?", "Customers won't see it anymore. Past requests are kept. (Tip: you can also just hide it.)", "Delete", true))) return;
+    const { error: e } = await sb.from("payment_methods").delete().eq("id", b.dataset.del);
+    if (e) return toast(errMsg(e), "error");
+    toast("Deleted.", "success"); route();
+  }));
+}
+
+function methodForm(m) {
+  const builtin = m.code === "premviocash", dep = m.kind === "deposit";
+  const fields = JSON.parse(JSON.stringify(m.fields || []));
+  openModal(`<h2>${m.id ? "Edit" : "Add"} ${dep ? "deposit" : "withdrawal"} method</h2><form id="mf2">
+    <label>Logo</label>
+    <div class="row"><div class="pm-logo big" id="lprev">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>LOGO</span>`}</div>
+      <input type="file" name="logo" accept="image/*"></div>
+    <label>Name</label><input name="mname" required maxlength="40" value="${esc(m.name || "")}" placeholder="${dep ? "e.g. eSewa, Khalti, Bank, Telegram 2" : "e.g. eSewa, Bank transfer"}">
+    <label>${dep ? "Payment details shown to the customer" : "Instructions shown to the customer"}</label>
+    <textarea name="details" maxlength="1000" placeholder="${dep ? "e.g. eSewa ID: 98XXXXXXXX (Premvio Pvt Ltd). Send the money, then upload the screenshot." : "e.g. We send the money to your eSewa within 1 hour."}">${esc(m.details || "")}</textarea>
+    ${builtin ? "" : `<label>Button link <span class="muted">(optional — e.g. https://t.me/premvio2)</span></label><input name="link" maxlength="300" value="${esc(m.link || "")}" placeholder="https://…">`}
+    <div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
+    <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>
+    <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
+    <div class="setting-row"><b>Show to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${m.active !== false ? "checked" : ""}><span></span></label></div>
+    ${builtin ? `<p class="small muted mt">PremvioCash uses the agent system (city, street and a 24-hour code), so it has no extra fields.</p>` : `
+    <h3 class="mt">Fields the customer fills in</h3>
+    <p class="small muted">${dep ? "Amount and a payment screenshot are always asked. Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
+    <div id="mfields"></div><button type="button" class="btn soft block mt" id="addMF">${ICONS.plus} Add field</button>`}
+    <button class="btn block mt" id="saveM">Save method</button></form>`, (md) => {
+    const f = $("#mf2", md);
+    const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No extra fields — only amount + screenshot." : "No extra fields — only the amount.");
+    if (fb) $("#addMF", md).onclick = fb.add;
+    f.logo.onchange = () => { const file = f.logo.files[0]; if (file) $("#lprev", md).innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      let flds;
+      try { flds = fb ? fb.collect() : []; } catch (err) { return toast(err.message, "error"); }
+      const mn = f.min.value === "" ? null : Number(f.min.value), mx = f.max.value === "" ? null : Number(f.max.value);
+      if (mn != null && mx != null && mn > mx) return toast("Minimum can't be more than maximum.", "error");
+      const link = f.link ? f.link.value.trim() : m.link || null;
+      if (link && !/^https?:\/\//i.test(link)) return toast("The link must start with https://", "error");
+      busy($("#saveM", md), async () => {
+        let logo_url = m.logo_url || null;
+        if (f.logo.files[0]) logo_url = await uploadImage(f.logo.files[0], "methods");
+        const row = { kind: m.kind, name: f.mname.value.trim(), details: f.details.value.trim(), link: link || null, logo_url,
+          min_amount: mn, max_amount: mx, sort: Number(f.sort.value) || 0, active: f.active.checked, fields: flds };
+        const { error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id) : await sb.from("payment_methods").insert(row);
+        if (error) throw error;
+        closeModal(); toast("Method saved.", "success"); route();
+      });
+    };
+  });
+}
+
+/* ---------------- DEPOSIT REQUESTS (with payment screenshot) ---------------- */
+async function viewProof(path) {
+  const { data: u, error } = await sb.storage.from("proofs").createSignedUrl(path, 600);
+  if (error) { toast(errMsg(error), "error"); return null; }
+  return u.signedUrl;
+}
+async function deposits(v) {
+  if (!AD.depFilter) AD.depFilter = "pending";
+  let q = sb.from("deposit_requests").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
+  if (AD.depFilter !== "all") q = q.eq("status", AD.depFilter);
+  const { data, error } = await q;
+  if (error) throw error;
+  v.innerHTML = `<p class="muted small">Customers paid with one of your deposit methods and uploaded a screenshot. Check the screenshot and your account, then approve to add the money to their balance.</p>` +
+    chips([["pending", "Waiting"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]], AD.depFilter, "df") +
+    table(["#", "Customer", "Method", "Amount", "Details", "Sent", "Screenshot", "Status", ""], data.map((d) => `<tr>
+      <td>${d.id}</td><td>${who(d.profiles)}</td><td><b>${esc(d.method_name)}</b></td><td><b>${money(d.amount)}</b></td>
+      <td>${formView(d.form_data)}</td><td class="small">${fmtDate(d.created_at)}</td>
+      <td>${d.proof_path ? `<button class="btn sm soft" data-proof="${esc(d.proof_path)}">🧾 View</button>` : "—"}</td>
+      <td><span class="badge ${d.status === "approved" ? "completed" : d.status}">${d.status}</span>${d.admin_note ? `<div class="small muted">${esc(d.admin_note)}</div>` : ""}</td>
+      <td style="white-space:nowrap">${d.status === "pending" ? `<button class="btn sm success" data-dok="${d.id}">Approve</button><button class="btn sm ghost" data-dno="${d.id}">Reject</button>` : ""}</td>
+    </tr>`), "No deposit requests");
+  $$("[data-df]", v).forEach((c) => (c.onclick = () => { AD.depFilter = c.dataset.df; route(); }));
+  $$("[data-proof]", v).forEach((b) => (b.onclick = async () => {
+    const url = await viewProof(b.dataset.proof); if (!url) return;
+    openModal(`<h2>Payment screenshot</h2><img src="${esc(url)}" alt="Screenshot" style="width:100%;border-radius:12px;background:#000">
+      <p class="small muted mt">Private link, works for 10 minutes. <a href="${esc(url)}" target="_blank" rel="noopener">Open full size</a></p>`);
+  }));
+  $$("[data-dok]", v).forEach((b) => (b.onclick = async () => {
+    const d = data.find((x) => x.id == b.dataset.dok);
+    const url = d.proof_path ? await viewProof(d.proof_path) : null;
+    openModal(`<h2>Approve deposit #${d.id}</h2>
+      <p><b>${money(d.amount)}</b> via <b>${esc(d.method_name)}</b> from ${esc(d.profiles?.full_name || "")} (${esc(d.profiles?.member_id || "")})</p>
+      ${formView(d.form_data)}
+      ${url ? `<img src="${esc(url)}" alt="Screenshot" style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;background:#000;margin-top:10px">` : ""}
+      <p class="small muted mt">Only approve after you see the money in your account.</p>
+      <button class="btn success block mt" id="dokBtn">Approve — add ${money(d.amount)}</button>`, (m) => {
+      $("#dokBtn", m).onclick = () => busy($("#dokBtn", m), async () => {
+        const { error: e } = await sb.rpc("admin_review_deposit", { p_id: d.id, p_approve: true, p_note: null });
+        if (e) throw e;
+        closeModal(); toast("Deposit approved — balance added.", "success"); refreshCounts(); route();
+      });
+    });
+  }));
+  $$("[data-dno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject deposit #${b.dataset.dno}</h2><form id="dnf">
+    <label>Reason (shown to customer)</label><input name="note" required maxlength="200" placeholder="e.g. Money not received / screenshot unclear">
+    <button class="btn danger block mt">Reject</button></form>`, (m) => {
+    $("#dnf", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("admin_review_deposit", { p_id: Number(b.dataset.dno), p_approve: false, p_note: e.target.note.value.trim() });
+        if (er) throw er;
+        closeModal(); toast("Deposit rejected.", "success"); refreshCounts(); route();
+      });
+    };
+  })));
+}
+
+/* ---------------- WITHDRAWAL REQUESTS (non-PremvioCash methods) ---------------- */
+async function payouts(v) {
+  if (!AD.payFilter) AD.payFilter = "pending";
+  let q = sb.from("payout_requests").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
+  if (AD.payFilter !== "all") q = q.eq("status", AD.payFilter);
+  const { data, error } = await q;
+  if (error) throw error;
+  v.innerHTML = `<p class="muted small">The money is already taken from the customer's balance and held. Send it to the account shown, then click <b>Mark paid</b>. <b>Reject</b> returns the money to their balance. (PremvioCash withdrawals are on the “PremvioCash codes” page.)</p>` +
+    chips([["pending", "Waiting"], ["paid", "Paid"], ["rejected", "Rejected"], ["all", "All"]], AD.payFilter, "pf") +
+    table(["#", "Customer", "Method", "Amount", "Send to", "Requested", "Status", ""], data.map((w) => `<tr>
+      <td>${w.id}</td><td>${who(w.profiles)}</td><td><b>${esc(w.method_name)}</b></td><td><b>${money(w.amount)}</b></td>
+      <td>${formView(w.form_data)}</td><td class="small">${fmtDate(w.created_at)}</td>
+      <td><span class="badge ${w.status === "paid" ? "completed" : w.status}">${w.status}</span>${w.admin_note ? `<div class="small muted">${esc(w.admin_note)}</div>` : ""}</td>
+      <td style="white-space:nowrap">${w.status === "pending" ? `<button class="btn sm success" data-pok="${w.id}">Mark paid</button><button class="btn sm ghost" data-pno="${w.id}">Reject</button>` : ""}</td>
+    </tr>`), "No withdrawal requests");
+  $$("[data-pf]", v).forEach((c) => (c.onclick = () => { AD.payFilter = c.dataset.pf; route(); }));
+  $$("[data-pok]", v).forEach((b) => (b.onclick = () => {
+    const w = data.find((x) => x.id == b.dataset.pok);
+    openModal(`<h2>Mark withdrawal #${w.id} paid</h2>
+      <p>Did you send <b>${money(w.amount)}</b> via <b>${esc(w.method_name)}</b> to:</p>${formView(w.form_data)}
+      <form id="pkf"><label>Note to customer (optional, e.g. transaction ID)</label><input name="note" maxlength="200">
+      <button class="btn success block mt">Yes, mark paid</button></form>`, (m) => {
+      $("#pkf", m).onsubmit = (e) => {
+        e.preventDefault();
+        busy($("button", e.target), async () => {
+          const { error: er } = await sb.rpc("admin_review_payout", { p_id: w.id, p_paid: true, p_note: e.target.note.value.trim() || null });
+          if (er) throw er;
+          closeModal(); toast("Marked as paid.", "success"); refreshCounts(); route();
+        });
+      };
+    });
+  }));
+  $$("[data-pno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject withdrawal #${b.dataset.pno}</h2>
+    <p class="muted small">The money goes back to the customer's balance.</p><form id="pnf">
+    <label>Reason (shown to customer)</label><input name="note" required maxlength="200" placeholder="e.g. Wrong account number">
+    <button class="btn danger block mt">Reject &amp; refund</button></form>`, (m) => {
+    $("#pnf", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("admin_review_payout", { p_id: Number(b.dataset.pno), p_paid: false, p_note: e.target.note.value.trim() });
+        if (er) throw er;
+        closeModal(); toast("Rejected and refunded.", "success"); refreshCounts(); route();
+      });
+    };
+  })));
 }
 
 </script>
