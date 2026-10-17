@@ -309,6 +309,31 @@ td .btn + .btn { margin-left: 6px; }
   .grid-2 { grid-template-columns: 1fr; }
 }
 
+/* ---------- refunds ---------- */
+.badge.refunded { background: rgba(31, 162, 255, .15); color: var(--blue); }
+.badge.requested { background: rgba(255, 159, 67, .15); color: var(--orange); }
+.refund-box { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--card-2); font-size: .82rem; }
+
+/* ---------- product search ---------- */
+.search-box { position: relative; margin: 10px 0 14px; }
+.search-box svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
+.search-box input { padding-left: 40px; padding-right: 40px; }
+.search-box .clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border: 0;
+  border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.search-box .clear svg { position: static; transform: none; }
+
+/* ---------- searchable pick list (city / street) ---------- */
+.ac { position: relative; }
+.ac-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 60; max-height: 240px; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 4px;
+}
+.ac-item { display: block; width: 100%; text-align: left; padding: 10px 12px; border: 0; background: none; color: var(--text);
+  font: inherit; border-radius: 9px; cursor: pointer; }
+.ac-item:hover, .ac-item.on { background: var(--card-2); }
+.ac-item b { color: var(--blue); }
+.ac-empty { padding: 10px 12px; color: var(--muted); font-size: .9rem; }
+
 /* ---------- v2 additions ---------- */
 .btn.deposit { background: linear-gradient(135deg, #2ee59d, #16b46f); color: #04220f; }
 .btn.withdraw { background: linear-gradient(135deg, #ff6b78, #e23a4b); color: #fff; }
@@ -586,6 +611,7 @@ const ICONS = {
   cash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/></svg>',
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/></svg>',
 };
 
@@ -594,6 +620,45 @@ const COUNTRIES = "Nepal|India|Bangladesh|Bhutan|Pakistan|Sri Lanka|Maldives|Afg
 function countryOptions(selected = "Nepal") {
   return COUNTRIES.map((c) => `<option ${c === selected ? "selected" : ""}>${esc(c)}</option>`).join("");
 }
+/* ---------- searchable pick list: type "p" → every option starting with p ---------- */
+// input: <input>, getOptions(): string[], onPick(value): optional
+function mountPicker(input, getOptions, onPick) {
+  const wrap = document.createElement("div");
+  wrap.className = "ac";
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+  input.setAttribute("autocomplete", "off");
+  const list = document.createElement("div");
+  list.className = "ac-list hidden";
+  wrap.appendChild(list);
+  let active = -1, shown = [];
+  const close = () => { list.classList.add("hidden"); active = -1; };
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    const all = getOptions();
+    shown = all.filter((o) => o.toLowerCase().startsWith(q));
+    if (!all.length) { close(); return; }
+    list.innerHTML = shown.length
+      ? shown.map((o, i) => `<button type="button" class="ac-item ${i === active ? "on" : ""}" data-i="${i}"><b>${esc(o.slice(0, q.length))}</b>${esc(o.slice(q.length))}</button>`).join("")
+      : `<div class="ac-empty">No match for “${esc(input.value.trim())}”</div>`;
+    list.classList.remove("hidden");
+  };
+  const pick = (v) => { input.value = v; close(); onPick && onPick(v); };
+  input.addEventListener("focus", () => { active = -1; draw(); });
+  input.addEventListener("input", () => { active = -1; draw(); onPick && onPick(null); });
+  input.addEventListener("keydown", (e) => {
+    if (list.classList.contains("hidden")) return;
+    if (e.key === "ArrowDown") { active = Math.min(active + 1, shown.length - 1); draw(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { active = Math.max(active - 1, 0); draw(); e.preventDefault(); }
+    else if (e.key === "Enter" && active >= 0) { pick(shown[active]); e.preventDefault(); }
+    else if (e.key === "Escape") close();
+  });
+  list.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus while choosing
+  list.addEventListener("click", (e) => { const b = e.target.closest(".ac-item"); if (b) pick(shown[Number(b.dataset.i)]); });
+  input.addEventListener("blur", () => setTimeout(close, 120));
+  return { refresh: draw };
+}
+
 /* ---------- date range (calendar) for history pages ---------- */
 function ymd(d) { const z = new Date(d.getTime() - d.getTimezoneOffset() * 6e4); return z.toISOString().slice(0, 10); }
 function defaultRange(days = 30) { const to = new Date(); return { from: ymd(new Date(to.getTime() - (days - 1) * 864e5)), to: ymd(to) }; }
@@ -762,7 +827,7 @@ async function dashboard(v) {
   const max = Math.max(1, ...(daily || []).map((d) => Number(d.sales)));
   v.innerHTML = `<div class="stats">
     ${[["Sales today", money(s.sales_today)], ["Deposits today", money(s.loads_today)], ["Pending orders", s.pending_orders],
-       ["Pending KYC", s.pending_kyc], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
+       ["Pending KYC", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
        ["Agents", s.agents], ["Customer balances", money(s.customer_balance)], ["Agent balances", money(s.agent_balance)]]
       .map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v">${val ?? 0}</div></div>`).join("")}
   </div>
@@ -772,7 +837,7 @@ async function dashboard(v) {
       <div class="day">${new Date(d.day + "T00:00").toLocaleDateString("en-GB", { weekday: "short" })}</div></div>`).join("")}</div></div>
   <h2 class="mt">Pending orders</h2>
   ${orderTable(recent || [])}`;
-  bindOrderButtons(v);
+  bindOrderButtons(v, recent || []);
 }
 
 /* ---------------- ORDERS ---------------- */
@@ -785,11 +850,46 @@ function orderTable(list) {
     <td>${o.id}</td><td>${who(o.profiles)}</td><td>${esc(o.product_name)}</td><td>${o.quantity}</td><td><b>${money(o.total)}</b></td>
     <td>${formView(o.form_data)}</td>
     <td class="small">${fmtDate(o.created_at)}</td>
-    <td><span class="badge ${o.status}">${o.status}</span>${o.admin_note ? `<div class="small muted">${esc(o.admin_note)}</div>` : ""}</td>
-    <td style="white-space:nowrap">${o.status === "pending" ? `<button class="btn sm success" data-done="${o.id}">Complete</button><button class="btn sm ghost" data-cancel="${o.id}">Cancel</button>` : ""}</td>
+    <td><span class="badge ${o.status}">${o.status}</span>${o.admin_note ? `<div class="small muted">${esc(o.admin_note)}</div>` : ""}
+      ${o.refund_status ? `<div class="refund-box"><span class="badge ${o.refund_status === "requested" ? "requested" : o.refund_status === "approved" ? "refunded" : "rejected"}">refund ${o.refund_status}</span>
+        ${o.refund_reason ? `<div class="muted">Customer: ${esc(o.refund_reason)}</div>` : ""}${o.refund_note ? `<div class="muted">You: ${esc(o.refund_note)}</div>` : ""}</div>` : ""}</td>
+    <td style="white-space:nowrap">
+      ${o.refund_status === "requested" && ["pending", "completed"].includes(o.status)
+        ? `<button class="btn sm success" data-rok="${o.id}">Approve refund</button><button class="btn sm ghost" data-rno="${o.id}">Reject</button><br>` : ""}
+      ${o.status === "pending" ? `<button class="btn sm success" data-done="${o.id}">Complete</button><button class="btn sm ghost" data-cancel="${o.id}">Cancel</button>` : ""}
+      ${o.status === "completed" && o.refund_status !== "requested" ? `<button class="btn sm withdraw" data-rok="${o.id}" data-direct="1">Refund</button>` : ""}</td>
   </tr>`), "No orders");
 }
-function bindOrderButtons(v) {
+function bindOrderButtons(v, list) {
+  $$("[data-rok]", v).forEach((b) => (b.onclick = () => {
+    const o = (list || []).find((x) => x.id == b.dataset.rok) || { id: b.dataset.rok };
+    openModal(`<h2>${b.dataset.direct ? "Refund" : "Approve refund for"} order #${o.id}</h2>
+      <p class="muted">${o.total != null ? `<b>${money(o.total)}</b> goes back to the customer's balance` : "The full amount goes back to the customer's balance"} and the order is marked <b>refunded</b>.</p>
+      ${o.refund_reason ? `<p class="small">Customer's reason: <b>${esc(o.refund_reason)}</b></p>` : ""}
+      <form id="rok"><label>Message to customer (optional)</label><input name="note" maxlength="200">
+      <button class="btn success block mt">Refund now</button></form>`, (m) => {
+      $("#rok", m).onsubmit = (e) => {
+        e.preventDefault();
+        busy($("button", e.target), async () => {
+          const { error } = await sb.rpc("admin_refund_order", { p_order: Number(o.id), p_note: e.target.note.value.trim() || null });
+          if (error) throw error;
+          closeModal(); toast("Refunded.", "success"); refreshCounts(); route();
+        });
+      };
+    });
+  }));
+  $$("[data-rno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject refund — order #${b.dataset.rno}</h2>
+    <form id="rno"><label>Reason (shown to customer)</label><input name="note" required maxlength="200" placeholder="e.g. Stars were already delivered">
+    <button class="btn danger block mt">Reject refund</button></form>`, (m) => {
+    $("#rno", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error } = await sb.rpc("admin_reject_refund", { p_order: Number(b.dataset.rno), p_note: e.target.note.value.trim() });
+        if (error) throw error;
+        closeModal(); toast("Refund rejected.", "success"); refreshCounts(); route();
+      });
+    };
+  })));
   $$("[data-done]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Complete order #${b.dataset.done}</h2>
     <p class="muted">The customer gets a notification that it was delivered.</p>
     <form id="df"><label>Message to customer (optional)</label><input name="note" maxlength="200">
@@ -819,20 +919,27 @@ function bindOrderButtons(v) {
 }
 async function orders(v) {
   let q = sb.from("orders").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
-  if (AD.orderFilter !== "all") q = q.eq("status", AD.orderFilter);
+  if (AD.orderFilter === "refunds") q = q.eq("refund_status", "requested");
+  else if (AD.orderFilter !== "all") q = q.eq("status", AD.orderFilter);
   const { data, error } = await q;
   if (error) throw error;
-  v.innerHTML = chips([["pending", "Pending"], ["completed", "Completed"], ["cancelled", "Cancelled"], ["all", "All"]], AD.orderFilter, "of") + orderTable(data);
+  const nReq = AD.stats.pending_refunds || 0;
+  v.innerHTML = chips([["pending", "Pending"], ["refunds", `Refund requests${nReq ? " (" + nReq + ")" : ""}`], ["completed", "Completed"], ["refunded", "Refunded"], ["cancelled", "Cancelled"], ["all", "All"]], AD.orderFilter, "of") + orderTable(data);
   $$("[data-of]", v).forEach((c) => (c.onclick = () => { AD.orderFilter = c.dataset.of; route(); }));
-  bindOrderButtons(v);
+  bindOrderButtons(v, data);
 }
 
 /* ---------------- PRODUCTS (with custom order form) ---------------- */
 async function products(v) {
-  const { data, error } = await sb.from("products").select("*").order("sort").order("created_at", { ascending: false });
+  let { data, error } = await sb.from("products").select("*").order("sort").order("created_at", { ascending: false });
   if (error) throw error;
-  v.innerHTML = `<div class="toolbar"><span class="muted grow">Products show on the customer Home page. Each product has its own order form.</span>
-    <button class="btn" id="add">${ICONS.plus} Add product</button></div>
+  const pq = String(AD.prodQ || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const all = data;
+  data = data.filter((p) => { const t = (p.name + " " + (p.description || "")).toLowerCase(); return pq.every((w) => t.includes(w)); });
+  v.innerHTML = `<p class="muted small">Products show on the customer Home page. Each product has its own order form.</p>
+    <form class="toolbar" id="prs"><input type="search" name="q" placeholder="Search products by name or description" value="${esc(AD.prodQ || "")}" autocomplete="off">
+    <button class="btn soft">${ICONS.search} Search</button><button type="button" class="btn" id="add">${ICONS.plus} Add product</button></form>
+    ${pq.length ? `<p class="small muted">${data.length} of ${all.length} products</p>` : ""}
     ${table(["Photo", "Name", "Price", "Qty limits", "Form fields", "Status", ""], data.map((p) => `<tr>
       <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}">` : `<div class="thumb"></div>`}</td>
       <td><b>${esc(p.name)}</b><div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
@@ -840,7 +947,9 @@ async function products(v) {
       <td class="small">${(p.fields || []).map((f) => esc(f.label) + (f.required ? "*" : "")).join(", ") || "—"}</td>
       <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span></td>
       <td style="white-space:nowrap"><button class="btn sm soft" data-edit="${p.id}">Edit</button><button class="btn sm ghost" data-del="${p.id}">Delete</button></td>
-    </tr>`), "No products yet — add your first one")}`;
+    </tr>`), pq.length ? "No products match your search" : "No products yet — add your first one")}`;
+  $("#prs").onsubmit = (e) => { e.preventDefault(); AD.prodQ = e.target.q.value; route(); };
+  $("#prs").q.addEventListener("search", (e) => { if (!e.target.value) { AD.prodQ = ""; route(); } });
   $("#add").onclick = () => productForm();
   $$("[data-edit]", v).forEach((b) => (b.onclick = () => productForm(data.find((p) => p.id == b.dataset.edit))));
   $$("[data-del]", v).forEach((b) => (b.onclick = async () => {
@@ -1308,6 +1417,7 @@ async function settings(v) {
     <div class="grid-2"><div><label>Minimum withdrawal (${CFG.CURRENCY})</label><input type="number" name="min_withdraw" min="0" value="${esc(s.min_withdraw || 100)}"></div>
     <div><label>Maximum withdrawal (${CFG.CURRENCY})</label><input type="number" name="max_withdraw" min="0" value="${esc(s.max_withdraw || 100000)}"></div></div>
     <label>Withdrawal code valid for (hours)</label><input type="number" name="withdraw_hours" min="1" max="168" value="${esc(s.withdraw_hours || 24)}">
+    <label>Customers can ask for a refund on delivered orders for (days)</label><input type="number" name="refund_days" min="0" max="365" value="${esc(s.refund_days ?? 7)}">
     <button class="btn block mt">Save settings</button></form></div>
     <div class="card" style="max-width:620px"><h3>Your account</h3>
       <p class="small">You are <b>${esc(AD.me.member_id)}</b> (${esc(AD.me.full_name)}). Another admin can reset your password from Agents &amp; admins.</p></div>`;
@@ -1316,7 +1426,7 @@ async function settings(v) {
     const f = e.target;
     let tg = f.telegram_username.value.trim();
     if (!tg.startsWith("@")) tg = "@" + tg;
-    const rows = [["telegram_username", tg], ["min_withdraw", f.min_withdraw.value], ["max_withdraw", f.max_withdraw.value], ["withdraw_hours", f.withdraw_hours.value]]
+    const rows = [["telegram_username", tg], ["min_withdraw", f.min_withdraw.value], ["max_withdraw", f.max_withdraw.value], ["withdraw_hours", f.withdraw_hours.value], ["refund_days", f.refund_days.value]]
       .map(([key, value]) => ({ key, value: String(value) }));
     busy($("button", f), async () => {
       const { error } = await sb.from("app_settings").upsert(rows);
