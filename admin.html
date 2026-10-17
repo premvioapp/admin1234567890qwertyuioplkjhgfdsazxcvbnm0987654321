@@ -309,6 +309,14 @@ td .btn + .btn { margin-left: 6px; }
   .grid-2 { grid-template-columns: 1fr; }
 }
 
+/* ---------- two-step login + KYC photo ---------- */
+.qr-box { background: #fff; border-radius: 14px; padding: 12px; width: 220px; height: 220px; margin: 10px auto; display: grid; place-items: center; }
+.qr-box img { width: 196px; height: 196px; }
+.otp { font-family: ui-monospace, Menlo, monospace; font-size: 1.6rem; letter-spacing: .5em; text-align: center; }
+.steps { padding-left: 20px; margin: 8px 0; } .steps li { margin: 6px 0; }
+.doc-preview { margin-top: 10px; border-radius: 12px; max-height: 220px; object-fit: contain; background: var(--bg-2); width: 100%; }
+.photo-ask { border: 1px dashed var(--orange); background: rgba(255, 159, 67, .07); border-radius: 12px; padding: 12px; margin-top: 12px; }
+
 /* ---------- refunds ---------- */
 .badge.refunded { background: rgba(31, 162, 255, .15); color: var(--blue); }
 .badge.requested { background: rgba(255, 159, 67, .15); color: var(--orange); }
@@ -352,6 +360,83 @@ td .btn + .btn { margin-left: 6px; }
 .kv { font-size: .82rem; }
 .kv span { color: var(--muted); }
 .back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+
+/* =====================================================================
+   AGENT PANEL — its own look ("cashier desk"): graphite + emerald,
+   Space Grotesk text, JetBrains Mono numbers. Scoped to body.agent-ui
+   ===================================================================== */
+.agent-ui {
+  --bg: #0a0e13; --bg-2: #0f151c; --card: #121a22; --card-2: #19232d;
+  --line: rgba(110, 231, 190, .13); --text: #e8f1ee; --muted: #84968f;
+  --blue: #14d9a4; --blue-2: #0ea5a4; --grad: linear-gradient(135deg, #19e3ad 0%, #0ea5a4 100%);
+  --radius: 12px; --shadow: 0 8px 22px rgba(0, 0, 0, .4);
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 500px at 100% -10%, rgba(20, 217, 164, .08), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(255, 255, 255, .018) 31px 32px),
+    var(--bg);
+  background-attachment: fixed;
+}
+.agent-ui .mono, .agent-ui .num, .agent-ui .amt-pos, .agent-ui .amt-neg { font-family: var(--mono); letter-spacing: 0; }
+.agent-ui .card { border-radius: 12px; box-shadow: none; }
+.agent-ui .btn { border-radius: 10px; letter-spacing: .01em; }
+.agent-ui input, .agent-ui select { border-radius: 10px; }
+.agent-ui .auth-logo { filter: drop-shadow(0 10px 30px rgba(20, 217, 164, .3)); }
+.agent-ui .tabs { background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0; gap: 4px; }
+.agent-ui .tabs button { border-radius: 0; padding: 12px 4px; white-space: nowrap; border-bottom: 2px solid transparent; font-weight: 600; }
+.agent-ui .tabs button.on { background: transparent; box-shadow: none; color: var(--blue); border-bottom-color: var(--blue); }
+
+/* header */
+.desk-head { display: flex; align-items: center; gap: 12px; padding: 14px 0 12px; position: sticky; top: 0; z-index: 20;
+  background: linear-gradient(var(--bg) 75%, transparent); }
+.desk-head img { width: 38px; height: 38px; }
+.desk-tag { font-family: var(--mono); font-size: .66rem; font-weight: 800; letter-spacing: .16em; color: #04140f;
+  background: var(--grad); padding: 3px 8px; border-radius: 6px; }
+.desk-name { font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
+.desk-sub { font-size: .78rem; color: var(--muted); font-family: var(--mono); }
+.desk-head .icon-btn { border-radius: 10px; }
+
+/* balance "register" display */
+.register { position: relative; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 14px;
+  background: linear-gradient(180deg, #0f1a17 0%, #0d1419 100%); }
+.register::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--grad); }
+.register .top { padding: 16px 18px 12px 22px; }
+.register .lbl { font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.register .big { font-family: var(--mono); font-weight: 800; font-size: 2.1rem; color: #b8ffe8; margin-top: 2px;
+  text-shadow: 0 0 22px rgba(20, 217, 164, .35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.register .big small { font-size: .9rem; color: var(--muted); margin-right: 6px; text-shadow: none; }
+.register .hint { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+.register .strip { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px dashed var(--line); }
+.register .strip > div { padding: 10px 18px 12px 22px; }
+.register .strip > div + div { border-left: 1px dashed var(--line); padding-left: 18px; }
+.register .strip .k { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.register .strip .v { font-family: var(--mono); font-weight: 700; font-size: 1rem; margin-top: 2px; }
+.register .strip .v.in { color: var(--green); } .register .strip .v.out { color: var(--red); }
+.register .strip .c { font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+
+/* big action tiles */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.tile { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; border-radius: 14px; cursor: pointer;
+  border: 1px solid; font: inherit; text-align: left; transition: transform .1s, filter .15s; }
+.tile:active { transform: scale(.98); }
+.tile:hover { filter: brightness(1.1); }
+.tile .ti { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; }
+.tile .ti svg { width: 22px; height: 22px; }
+.tile b { font-size: 1.05rem; }
+.tile span { font-size: .78rem; opacity: .8; }
+.tile.deposit { background: rgba(34, 201, 131, .1); border-color: rgba(34, 201, 131, .35); color: #b6f5d8; }
+.tile.deposit .ti { background: var(--green); color: #03200f; }
+.tile.withdraw { background: rgba(255, 93, 108, .1); border-color: rgba(255, 93, 108, .35); color: #ffd0d5; }
+.tile.withdraw .ti { background: var(--red); color: #fff; }
+.tile.on { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* bigger mono inputs for codes and amounts */
+.agent-ui input[name="code"], .agent-ui input[name="amount"] { font-family: var(--mono); font-size: 1.15rem; letter-spacing: .08em; }
+.agent-ui .code-box { border-color: var(--blue); background: rgba(20, 217, 164, .06); }
+.agent-ui .code-box .code { color: #b8ffe8; font-family: var(--mono); }
+.agent-ui .setting-row b { font-weight: 600; }
+.agent-ui .list-item .ic { border-radius: 10px; }
 
 </style>
 <title>Premvio Admin</title>
@@ -620,6 +705,25 @@ const COUNTRIES = "Nepal|India|Bangladesh|Bhutan|Pakistan|Sri Lanka|Maldives|Afg
 function countryOptions(selected = "Nepal") {
   return COUNTRIES.map((c) => `<option ${c === selected ? "selected" : ""}>${esc(c)}</option>`).join("");
 }
+/* ---------- shrink a phone photo before upload (max 1600px JPEG) ---------- */
+function compressImage(file, maxDim = 1600, quality = 0.85) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => resolve(b || file), "image/jpeg", quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    setTimeout(() => resolve(file), 8000); // safety: never hang on unusual formats
+    img.src = url;
+  });
+}
+
 /* ---------- searchable pick list: type "p" → every option starting with p ---------- */
 // input: <input>, getOptions(): string[], onPick(value): optional
 function mountPicker(input, getOptions, onPick) {
@@ -702,12 +806,74 @@ sb.auth.getSession().then(async ({ data }) => {
   if (data.session) {
     try {
       const p = await getMyProfile();
-      if (p && p.role === "admin" && !p.blocked) return start(p);
+      if (p && p.role === "admin" && !p.blocked) return mfaGate(p, start);
       await pvSignOut();
     } catch (e) {}
   }
-  staffLogin(root, "Admin", ["admin"], start);
+  staffLogin(root, "Admin", ["admin"], (p) => mfaGate(p, start));
 });
+
+/* ---------------- TWO-STEP LOGIN (authenticator app code) ---------------- */
+function mfaScreen(inner) {
+  root.innerHTML = `<div class="auth-wrap"><div class="auth-box">
+    <img src="${PV_LOGO}" class="auth-logo" alt="Premvio"><div class="card">${inner}
+    <p class="center small mt"><button type="button" class="link-btn" id="mfaOut">Log out</button></p></div></div></div>`;
+  $("#mfaOut").onclick = async () => { await pvSignOut(); location.reload(); };
+}
+async function mfaGate(p, next) {
+  root.innerHTML = `<div class="loader"></div>`;
+  const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal && aal.currentLevel === "aal2") return next(p);
+  const { data: f } = await sb.auth.mfa.listFactors();
+  const ok = (f?.totp || []).filter((x) => x.status === "verified");
+  return ok.length ? mfaCode(ok[0].id, p, next) : mfaEnroll(p, next);
+}
+function bindOtp(form, factorId, p, next) {
+  const inp = form.code;
+  inp.oninput = () => { inp.value = inp.value.replace(/\D/g, "").slice(0, 6); if (inp.value.length === 6) form.requestSubmit ? form.requestSubmit() : form.onsubmit(new Event("submit")); };
+  form.onsubmit = (e) => {
+    e.preventDefault?.();
+    if (inp.value.length !== 6) return toast("Enter the 6-digit code.", "error");
+    busy($("button.btn", form), async () => {
+      const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code: inp.value });
+      if (error) { inp.value = ""; inp.focus(); throw new Error(/invalid|expired/i.test(error.message) ? "Wrong or expired code. Try the new code in your app." : error.message); }
+      toast("Two-step login verified.", "success");
+      next(p);
+    });
+  };
+  setTimeout(() => inp.focus(), 50);
+}
+function mfaCode(factorId, p, next) {
+  mfaScreen(`<h2 class="center">Two-step login</h2>
+    <p class="center muted small">Open your authenticator app and enter the 6-digit code for <b>Premvio</b>.</p>
+    <form id="otpf"><input name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+    <button class="btn block mt">Verify</button></form>
+    <p class="small muted center mt">Lost your phone? Another admin can reset it, or run <b>reset-admin-2fa.sql</b> in Supabase.</p>`);
+  bindOtp($("#otpf"), factorId, p, next);
+}
+async function mfaEnroll(p, next) {
+  const { data: f } = await sb.auth.mfa.listFactors();
+  for (const x of (f?.all || []).filter((x) => x.status !== "verified")) await sb.auth.mfa.unenroll({ factorId: x.id });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Premvio " + p.member_id + " " + Date.now() });
+  if (error) {
+    mfaScreen(`<h2>Two-step login not available</h2><p class="muted">${esc(error.message)}</p>
+      <p class="small">In Supabase go to <b>Authentication → Multi-Factor</b> (or Sign In / Providers → MFA) and turn on <b>TOTP (App Authenticator)</b>, then log in again.</p>`);
+    return;
+  }
+  mfaScreen(`<h2 class="center">Set up two-step login</h2>
+    <p class="muted small center">Admins must use a code from their phone. You only set this up once.</p>
+    <ol class="steps small">
+      <li>Install <b>Google Authenticator</b> or <b>Microsoft Authenticator</b> on your phone.</li>
+      <li>In the app tap <b>+</b> → <b>Scan a QR code</b> and scan this:</li></ol>
+    <div class="qr-box"><img src="${esc(data.totp.qr_code)}" alt="QR code"></div>
+    <p class="small muted center">Can't scan? Enter this key in the app:<br><b class="mono" style="word-break:break-all">${esc(data.totp.secret)}</b>
+      <button type="button" class="link-btn small" id="cpk">copy</button></p>
+    <ol class="steps small" start="3"><li>Type the 6-digit code the app shows:</li></ol>
+    <form id="otpf"><input name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+    <button class="btn block mt">Turn on two-step login</button></form>`);
+  $("#cpk").onclick = () => copyText(data.totp.secret);
+  bindOtp($("#otpf"), data.id, p, next);
+}
 
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: ICONS.grid },
@@ -1222,7 +1388,8 @@ async function personView(v, id, back) {
     <div class="money-actions mt"><button class="btn deposit" id="dep">Deposit</button><button class="btn withdraw" id="wd">Withdraw</button></div>
     <div class="row wrap mt">
       ${staff ? `<button class="btn sm soft" id="edit">Edit details</button><button class="btn sm soft" id="cid">Change login ID</button><button class="btn sm soft" id="pw">Reset password</button>
-        <button class="btn sm soft" id="role">Make ${u.role === "agent" ? "admin" : "agent"}</button>` : ""}
+        <button class="btn sm soft" id="role">Make ${u.role === "agent" ? "admin" : "agent"}</button>
+        ${u.role === "admin" && u.id !== AD.me.id ? `<button class="btn sm soft" id="mfaReset">Reset two-step login</button>` : ""}` : ""}
       ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>
         <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}
     </div>
@@ -1239,6 +1406,12 @@ async function personView(v, id, back) {
   }), "No history yet")}`;
   const reload = () => personView(v, id, back);
   bindRange(v, AD.pRange, (nr) => { AD.pRange = nr; reload(); });
+  if ($("#mfaReset")) $("#mfaReset").onclick = async () => {
+    if (!(await confirmBox("Reset two-step login?", `${esc(u.full_name)} will scan a new QR code next time they log in. Use this if they lost their phone.`, "Reset"))) return;
+    const { error } = await sb.rpc("admin_reset_mfa", { p_user: u.id });
+    if (error) return toast(errMsg(error), "error");
+    toast("Two-step login reset.", "success");
+  };
   if ($("#cid")) $("#cid").onclick = () => openModal(`<h2>Change login ID</h2>
       <p class="muted small">Current ID: <b class="mono">${esc(u.member_id)}</b>. The password stays the same.${u.id === AD.me.id ? " You will need to log in again with the new ID." : ""}</p>
       <form id="cidf"><label>New login ID</label><input name="nid" required maxlength="20" autocomplete="off" spellcheck="false" style="text-transform:uppercase">
@@ -1317,9 +1490,16 @@ async function kyc(v) {
       <td>${esc(k.doc_type)}<div class="mono small">${esc(k.doc_number)}</div></td><td>${esc(k.region)}, ${esc(k.city)}</td>
       <td class="small">${fmtDate(k.submitted_at)}</td>
       <td><span class="badge ${k.status}">${k.status}</span>${k.note ? `<div class="small muted">${esc(k.note)}</div>` : ""}</td>
-      <td style="white-space:nowrap">${k.status === "pending" ? `<button class="btn sm success" data-ok="${k.user_id}">Approve</button><button class="btn sm ghost" data-no="${k.user_id}">Reject</button>` : ""}</td>
+      <td style="white-space:nowrap">${k.photo_path ? `<button class="btn sm soft" data-photo="${esc(k.photo_path)}">📄 Photo</button>` : k.photo_required ? `<span class="small muted">photo asked</span> ` : ""}
+        ${k.status === "pending" ? `<button class="btn sm success" data-ok="${k.user_id}">Approve</button><button class="btn sm ghost" data-no="${k.user_id}">Reject</button>` : ""}</td>
     </tr>`), "No KYC submissions");
   $$("[data-kf]", v).forEach((c) => (c.onclick = () => { AD.kycFilter = c.dataset.kf; route(); }));
+  $$("[data-photo]", v).forEach((b) => (b.onclick = async () => {
+    const { data: u, error } = await sb.storage.from("kyc").createSignedUrl(b.dataset.photo, 600);
+    if (error) return toast(errMsg(error), "error");
+    openModal(`<h2>Document photo</h2><img src="${esc(u.signedUrl)}" alt="Document" style="width:100%;border-radius:12px;background:#000">
+      <p class="small muted mt">This private link works for 10 minutes. <a href="${esc(u.signedUrl)}" target="_blank" rel="noopener">Open full size</a></p>`);
+  }));
   $$("[data-ok]", v).forEach((b) => (b.onclick = async () => {
     const { error } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.ok, p_approve: true, p_note: null });
     if (error) return toast(errMsg(error), "error");
@@ -1327,11 +1507,13 @@ async function kyc(v) {
   }));
   $$("[data-no]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject KYC</h2><form id="rf">
     <label>Reason (shown to customer)</label><input name="note" required maxlength="200" placeholder="e.g. Document number doesn't match">
+    <label class="row" style="color:var(--text)"><input type="checkbox" name="photo" checked style="width:auto">
+      Ask the customer to upload a photo of the document</label>
     <button class="btn danger block mt">Reject</button></form>`, (m) => {
     $("#rf", m).onsubmit = (e) => {
       e.preventDefault();
       busy($("button", e.target), async () => {
-        const { error } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.no, p_approve: false, p_note: e.target.note.value.trim() });
+        const { error } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.no, p_approve: false, p_note: e.target.note.value.trim(), p_require_photo: e.target.photo.checked });
         if (error) throw error;
         closeModal(); toast("KYC rejected.", "success"); refreshCounts(); route();
       });
