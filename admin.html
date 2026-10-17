@@ -539,6 +539,31 @@ input[type="file"] { padding: 8px; cursor: pointer; }
 input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin-right: 12px; border-radius: 10px; cursor: pointer;
   background: var(--grad); color: #fff; font: inherit; font-weight: 700; }
 
+/* ============ V21: moving message + pinned products ============ */
+.ticker { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; padding: 8px 10px; border-radius: 12px;
+  background: rgba(255, 200, 61, .10); border: 1px solid rgba(255, 200, 61, .35); overflow: hidden; }
+.ticker .tk-ic { flex: none; font-size: 1rem; }
+.tk-track { flex: 1; overflow: hidden; white-space: nowrap; position: relative; }
+.tk-move { display: inline-block; white-space: nowrap; font-weight: 700; font-size: .9rem; color: var(--text);
+  animation: tk-ltr 15s linear infinite; will-change: transform; }
+.tk-move.rtl { animation-name: tk-rtl; }
+.ticker:hover .tk-move, .ticker:active .tk-move { animation-play-state: paused; }
+@keyframes tk-ltr { from { transform: translateX(-100%); } to { transform: translateX(var(--tw, 100vw)); } }
+@keyframes tk-rtl { from { transform: translateX(var(--tw, 100vw)); } to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .tk-move { animation: none; white-space: normal; }
+  .tk-track { white-space: normal; }
+}
+.sec-title { margin: 14px 0 8px; font-size: 1rem; }
+.product .ph { position: relative; }
+.product.pinned { border-color: rgba(255, 200, 61, .55); }
+.pin-badge { position: absolute; top: 8px; left: 8px; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--gold); color: #241600; font-size: .7rem; font-weight: 800; padding: 3px 8px; border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.pin-col { white-space: nowrap; }
+.product { display: flex; flex-direction: column; justify-content: flex-start; }
+.product .ph, .product .info { width: 100%; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1206,22 +1231,41 @@ async function products(v) {
   const pq = String(AD.prodQ || "").toLowerCase().split(/\s+/).filter(Boolean);
   const all = data;
   data = data.filter((p) => { const t = (p.name + " " + (p.description || "")).toLowerCase(); return pq.every((w) => t.includes(w)); });
+  const nPin = all.filter((p) => p.pinned).length;
+  data.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   v.innerHTML = `<p class="muted small">Products show on the customer Home page. Each product has its own order form.</p>
+    <div class="card row" style="max-width:720px"><div class="grow"><b>📌 Pinned products: ${nPin} / 4</b>
+      <div class="small muted">Pinned products are always on top of the customer Home page under “⭐ Recommended”, with your badge text (e.g. Recommended, Hot, Best price). Tap 📌 Pin on a product below.</div></div></div>
     <form class="toolbar" id="prs"><input type="search" name="q" placeholder="Search products by name or description" value="${esc(AD.prodQ || "")}" autocomplete="off">
     <button class="btn soft">${ICONS.search} Search</button><button type="button" class="btn" id="add">${ICONS.plus} Add product</button></form>
     ${pq.length ? `<p class="small muted">${data.length} of ${all.length} products</p>` : ""}
-    ${table(["Photo", "Name", "Price", "Qty limits", "Form fields", "Status", ""], data.map((p) => `<tr>
+    ${table(["Photo", "Name", "Price", "Qty limits", "Form fields", "Status", "Pin", ""], data.map((p) => `<tr>
       <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}">` : `<div class="thumb"></div>`}</td>
       <td><b>${esc(p.name)}</b><div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
       <td><b>${money(p.price)}</b></td><td class="small">${p.min_qty} – ${p.max_qty}</td>
       <td class="small">${(p.fields || []).map((f) => esc(f.label) + (f.required ? "*" : "")).join(", ") || "—"}</td>
       <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span></td>
+      <td class="pin-col">${p.pinned
+        ? `<span class="badge admin">📌 ${esc(p.pin_badge || "Recommended")}</span><div class="mt"><button class="btn sm soft" data-pin="${p.id}">Edit badge</button><button class="btn sm ghost" data-unpin="${p.id}">Unpin</button></div>`
+        : `<button class="btn sm soft" data-pin="${p.id}" ${nPin >= 4 ? `title="4 products are already pinned"` : ""}>📌 Pin</button>`}</td>
       <td style="white-space:nowrap"><button class="btn sm soft" data-edit="${p.id}">Edit</button><button class="btn sm ghost" data-del="${p.id}">Delete</button></td>
     </tr>`), pq.length ? "No products match your search" : "No products yet — add your first one")}`;
   $("#prs").onsubmit = (e) => { e.preventDefault(); AD.prodQ = e.target.q.value; route(); };
   $("#prs").q.addEventListener("search", (e) => { if (!e.target.value) { AD.prodQ = ""; route(); } });
   $("#add").onclick = () => productForm();
   $$("[data-edit]", v).forEach((b) => (b.onclick = () => productForm(data.find((p) => p.id == b.dataset.edit))));
+  $$("[data-pin]", v).forEach((b) => (b.onclick = () => {
+    const p = data.find((x) => x.id == b.dataset.pin);
+    if (!p.pinned && nPin >= 4) return toast("You can pin at most 4 products. Unpin one first.", "error");
+    pinModal(p);
+  }));
+  $$("[data-unpin]", v).forEach((b) => (b.onclick = async () => {
+    const p = data.find((x) => x.id == b.dataset.unpin);
+    if (!(await confirmBox("Unpin product?", `“${esc(p.name)}” will go back to its normal place in the list.`, "Unpin"))) return;
+    const { error } = await sb.from("products").update({ pinned: false }).eq("id", p.id);
+    if (error) return toast(errMsg(error), "error");
+    toast("Unpinned.", "success"); route();
+  }));
   $$("[data-del]", v).forEach((b) => (b.onclick = async () => {
     if (!(await confirmBox("Delete product?", "It disappears from the customer app. Past orders are kept.", "Delete", true))) return;
     const { error } = await sb.from("products").delete().eq("id", b.dataset.del);
@@ -1229,6 +1273,28 @@ async function products(v) {
     toast("Deleted.", "success"); route();
   }));
 }
+// Pin a product on top of the customer Home page, with a short badge text
+function pinModal(p) {
+  const presets = ["Recommended", "Hot 🔥", "Best price", "New", "Popular"];
+  openModal(`<h2>📌 ${p.pinned ? "Edit badge" : "Pin product"}</h2>
+    <p class="small muted">“${esc(p.name)}” will always be on top of the customer Home page with this badge.</p>
+    <form id="pinf"><label>Badge text (max 24 letters)</label>
+      <input name="badge" maxlength="24" required value="${esc(p.pin_badge || "Recommended")}">
+      <div class="row mt" style="flex-wrap:wrap;gap:6px">${presets.map((t) => `<button type="button" class="btn sm soft" data-preset="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      <button class="btn block mt">${p.pinned ? "Save badge" : "📌 Pin on top"}</button></form>`, (m) => {
+    const f = $("#pinf", m);
+    $$("[data-preset]", m).forEach((b) => (b.onclick = () => { f.badge.value = b.dataset.preset; }));
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      busy($('button.btn:not([type="button"])', f), async () => {
+        const { error } = await sb.from("products").update({ pinned: true, pin_badge: f.badge.value.trim() || "Recommended" }).eq("id", p.id);
+        if (error) throw error;
+        closeModal(); toast(p.pinned ? "Badge saved." : "Pinned on top.", "success"); route();
+      });
+    };
+  });
+}
+
 const FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["select", "Dropdown (choose one)"]];
 function newFieldId() { return "f" + Math.random().toString(36).slice(2, 8); }
 function productForm(p = {}) {
@@ -1698,7 +1764,17 @@ async function notify(v) {
 async function settings(v) {
   const { data } = await sb.from("app_settings").select("*");
   const s = Object.fromEntries((data || []).map((r) => [r.key, r.value]));
-  v.innerHTML = `<div class="card" style="max-width:620px"><h2>App settings</h2><form id="sf">
+  const dir = s.ticker_dir === "rtl" ? "rtl" : "ltr", spd = s.ticker_speed || "normal";
+  v.innerHTML = `<div class="card" style="max-width:620px"><h2>📢 Moving message</h2>
+    <p class="small muted">A message that moves across the top of the customer Home page.</p>
+    <form id="tkf">
+      <div class="setting-row"><b>Show moving message</b><label class="switch" style="margin:0"><input type="checkbox" name="on" ${s.ticker_on === "true" ? "checked" : ""}><span></span></label></div>
+      <label>Message</label><textarea name="text" maxlength="300" placeholder="e.g. 🎉 Telegram Premium 10% off this week!">${esc(s.ticker_text || "")}</textarea>
+      <div class="grid-2"><div><label>Direction</label><select name="dir">
+        <option value="ltr" ${dir === "ltr" ? "selected" : ""}>Left → Right</option><option value="rtl" ${dir === "rtl" ? "selected" : ""}>Right → Left</option></select></div>
+      <div><label>Speed</label><select name="speed">${[["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]].map(([k, l]) => `<option value="${k}" ${spd === k ? "selected" : ""}>${l}</option>`).join("")}</select></div></div>
+      <button class="btn block mt">Save message</button></form></div>
+    <div class="card" style="max-width:620px"><h2>App settings</h2><form id="sf">
     <label>Telegram username customers message to deposit</label><input name="telegram_username" required value="${esc(s.telegram_username || "@premvio")}">
     <div class="grid-2"><div><label>Minimum withdrawal (${CFG.CURRENCY})</label><input type="number" name="min_withdraw" min="0" value="${esc(s.min_withdraw || 100)}"></div>
     <div><label>Maximum withdrawal (${CFG.CURRENCY})</label><input type="number" name="max_withdraw" min="0" value="${esc(s.max_withdraw || 100000)}"></div></div>
@@ -1706,6 +1782,18 @@ async function settings(v) {
     <button class="btn block mt">Save settings</button></form></div>
     <div class="card" style="max-width:620px"><h3>Your account</h3>
       <p class="small">You are <b>${esc(AD.me.member_id)}</b> (${esc(AD.me.full_name)}). Another admin can reset your password from Agents &amp; admins.</p></div>`;
+  $("#tkf").onsubmit = (e) => {
+    e.preventDefault();
+    const f = e.target, text = f.text.value.trim();
+    if (f.on.checked && !text) return toast("Write the message first.", "error");
+    const rows = [["ticker_on", f.on.checked ? "true" : "false"], ["ticker_text", text], ["ticker_dir", f.dir.value], ["ticker_speed", f.speed.value]]
+      .map(([key, value]) => ({ key, value }));
+    busy($('button.btn:not([type="button"])', f), async () => {
+      const { error } = await sb.from("app_settings").upsert(rows);
+      if (error) throw error;
+      toast(f.on.checked ? "Moving message is live." : "Moving message saved (turned off).", "success");
+    });
+  };
   $("#sf").onsubmit = (e) => {
     e.preventDefault();
     const f = e.target;
