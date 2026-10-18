@@ -621,6 +621,15 @@ input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin
 .tile-wide:active { transform: scale(.98); }
 .dp-back { display: inline-block; margin: 0 0 10px; color: var(--muted); font-size: .85rem; text-decoration: none; }
 .dp-back:hover { color: var(--blue); }
+/* admin: choose agents for an agent payment method */
+.seg { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.seg label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); cursor: pointer; }
+.seg input { width: auto; margin: 0; }
+.ag-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; }
+.ag-row { display: flex; align-items: center; gap: 10px; margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--text); cursor: pointer; }
+.ag-row:last-child { border-bottom: 0; }
+.ag-row input { width: auto; margin: 0; }
+.ag-row:hover { background: var(--card-2); }
 
 </style>
 <title>Premvio Admin</title>
@@ -1074,6 +1083,7 @@ const SECTIONS = [
   { id: "payouts", label: "Withdrawal requests", icon: ICONS.wallet, count: "pending_payouts" },
   { id: "withdrawals", label: "PremvioCash codes", icon: ICONS.wallet, count: "pending_withdrawals" },
   { id: "methods", label: "Payment methods", icon: ICONS.grid },
+  { id: "agentmethods", label: "Agent payment methods", icon: ICONS.grid },
   { id: "transactions", label: "Transactions", icon: ICONS.list },
   { id: "notify", label: "Send notification", icon: ICONS.bell },
   { id: "settings", label: "Settings", icon: ICONS.gear },
@@ -1133,7 +1143,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, transactions, notify, settings }[s];
+  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, transactions, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1954,14 +1964,14 @@ async function methods(v) {
   const card = (m) => `<div class="pm-card ${m.active ? "" : "off"}">
     <div class="pm-logo">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>${esc((m.name || "?").slice(0, 2).toUpperCase())}</span>`}</div>
     <div class="grow"><b>${esc(m.name)}</b> ${m.code === "premviocash" ? `<span class="badge agent">built-in</span>` : ""} ${m.active ? "" : `<span class="badge cancelled">hidden</span>`}
-      ${m.kind === "deposit" ? `<span class="badge ${m.audience === "agents" ? "agent" : m.audience === "both" ? "admin" : "active"}">${{ agents: "agents only", both: "customers + agents", customers: "customers only" }[m.audience || "customers"]}</span>` : ""}
       <div class="small muted pm-details">${esc(m.details || "")}</div>
       <div class="small muted">${m.min_amount != null ? "Min " + money(m.min_amount) : ""}${m.max_amount != null ? " · Max " + money(m.max_amount) : ""}
         ${(m.fields || []).length ? " · Fields: " + m.fields.map((f) => esc(f.label)).join(", ") : ""}</div></div>
     <div class="pm-actions"><button class="btn sm soft" data-edit="${m.id}">Edit</button>
       ${m.code === "premviocash" ? "" : `<button class="btn sm ghost" data-del="${m.id}">Delete</button>`}</div></div>`;
-  const dep = data.filter((m) => m.kind === "deposit"), wd = data.filter((m) => m.kind === "withdraw");
-  v.innerHTML = `<p class="muted small">Customers see these as logos (3 per row) on the Deposit and Withdraw screens. Upload a square logo for best results.</p>
+  const dep = data.filter((m) => m.kind === "deposit" && m.audience !== "agents"), wd = data.filter((m) => m.kind === "withdraw");
+  v.innerHTML = `<p class="muted small">Customers see these as logos (3 per row) on the Deposit and Withdraw screens of the app. Upload a square logo for best results.
+    Agents have their own list: <a href="#agentmethods">Agent payment methods</a>.</p>
     <div class="card"><div class="row between"><h2 style="margin:0;color:var(--green)">Deposit methods</h2>
       <button class="btn sm" data-add="deposit">${ICONS.plus} Add deposit method</button></div>
       <div class="mt">${dep.map(card).join("") || `<div class="empty">No deposit methods — add one (e.g. eSewa, Khalti, bank, another Telegram ID)</div>`}</div></div>
@@ -1969,46 +1979,98 @@ async function methods(v) {
       <button class="btn sm" data-add="withdraw">${ICONS.plus} Add withdrawal method</button></div>
       <div class="mt">${wd.map(card).join("")}</div></div>`;
   $$("[data-add]", v).forEach((b) => (b.onclick = () => methodForm({ kind: b.dataset.add })));
+  bindMethodButtons(v, data);
+}
+function bindMethodButtons(v, data) {
   $$("[data-edit]", v).forEach((b) => (b.onclick = () => methodForm(data.find((m) => m.id == b.dataset.edit))));
   $$("[data-del]", v).forEach((b) => (b.onclick = async () => {
-    if (!(await confirmBox("Delete this method?", "Customers won't see it anymore. Past requests are kept. (Tip: you can also just hide it.)", "Delete", true))) return;
+    if (!(await confirmBox("Delete this method?", "It disappears from the list. Past requests are kept. (Tip: you can also just hide it.)", "Delete", true))) return;
     const { error: e } = await sb.from("payment_methods").delete().eq("id", b.dataset.del);
     if (e) return toast(errMsg(e), "error");
     toast("Deleted.", "success"); route();
   }));
 }
 
-function methodForm(m) {
-  const builtin = m.code === "premviocash", dep = m.kind === "deposit";
+/* ---------------- AGENT PAYMENT METHODS (only for the agent deposit portal) ---------------- */
+async function loadAgents() {
+  const { data } = await sb.from("profiles").select("id, member_id, full_name, city, blocked").eq("role", "agent").order("member_id");
+  return data || [];
+}
+async function agentmethods(v) {
+  const [{ data, error }, agentsList] = await Promise.all([
+    sb.from("payment_methods").select("*").eq("kind", "deposit").eq("audience", "agents").order("sort").order("id"), loadAgents()]);
+  if (error) throw error;
+  const name = (id) => { const a = agentsList.find((x) => x.id === id); return a ? a.member_id : "deleted agent"; };
+  const forWho = (m) => !m.agent_ids || !m.agent_ids.length
+    ? `<span class="badge admin">All agents</span>`
+    : `<span class="badge agent">${m.agent_ids.length} agent${m.agent_ids.length === 1 ? "" : "s"}</span> <span class="small mono">${m.agent_ids.map((id) => esc(name(id))).join(", ")}</span>`;
+  v.innerHTML = `<p class="muted small">These are <b>only for agents</b> (Agent Deposit Portal, agent-deposit.html) — customers never see them.
+      Give a method to <b>all agents</b> or only to <b>chosen agents</b>, so each agent can have different deposit options.</p>
+    <div class="card"><div class="row between"><h2 style="margin:0;color:var(--blue)">Agent deposit methods</h2>
+      <button class="btn sm" id="addAM">${ICONS.plus} Add agent method</button></div>
+      <div class="mt">${data.map((m) => `<div class="pm-card ${m.active ? "" : "off"}">
+        <div class="pm-logo">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>${esc((m.name || "?").slice(0, 2).toUpperCase())}</span>`}</div>
+        <div class="grow"><b>${esc(m.name)}</b> ${m.active ? "" : `<span class="badge cancelled">hidden</span>`}
+          <div class="mt">${forWho(m)}</div>
+          <div class="small muted pm-details">${esc(m.details || "")}</div>
+          ${(m.fields || []).length ? `<div class="small muted">Fields: ${m.fields.map((f) => esc(f.label)).join(", ")}</div>` : ""}</div>
+        <div class="pm-actions"><button class="btn sm soft" data-edit="${m.id}">Edit</button><button class="btn sm ghost" data-del="${m.id}">Delete</button></div></div>`).join("")
+        || `<div class="empty">No agent methods yet — add one (e.g. your bank account or eSewa for agents). Until then agents see “No deposit options”.</div>`}</div></div>`;
+  $("#addAM").onclick = () => methodForm({ kind: "deposit", audience: "agents" }, agentsList);
+  bindMethodButtons(v, data);   // delete buttons (edit is re-bound below with the agent list)
+  $$("[data-edit]", v).forEach((b) => (b.onclick = () => methodForm(data.find((m) => m.id == b.dataset.edit), agentsList)));
+}
+
+function methodForm(m, agentsList) {
+  const builtin = m.code === "premviocash", dep = m.kind === "deposit", forAgents = dep && m.audience === "agents";
+  const chosen = new Set(m.agent_ids || []);
   const fields = JSON.parse(JSON.stringify(m.fields || []));
-  openModal(`<h2>${m.id ? "Edit" : "Add"} ${dep ? "deposit" : "withdrawal"} method</h2><form id="mf2">
+  openModal(`<h2>${m.id ? "Edit" : "Add"} ${forAgents ? "agent deposit" : dep ? "deposit" : "withdrawal"} method</h2><form id="mf2">
     <label>Logo</label>
     <div class="row"><div class="pm-logo big" id="lprev">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>LOGO</span>`}</div>
       <input type="file" name="logo" accept="image/*"></div>
     <label>Name</label><input name="mname" required maxlength="40" value="${esc(m.name || "")}" placeholder="${dep ? "e.g. eSewa, Khalti, Bank, Telegram 2" : "e.g. eSewa, Bank transfer"}">
-    <label>${dep ? "Payment details shown to customers / agents" : "Instructions shown to the customer"}</label>
+    <label>${forAgents ? "Payment details shown to the agent" : dep ? "Payment details shown to the customer" : "Instructions shown to the customer"}</label>
     <textarea name="details" maxlength="1000" placeholder="${dep ? "e.g. eSewa ID: 98XXXXXXXX (Premvio Pvt Ltd). Send the money, then upload the screenshot." : "e.g. We send the money to your eSewa within 1 hour."}">${esc(m.details || "")}</textarea>
     ${builtin ? "" : `<label>Button link <span class="muted">(optional — e.g. https://t.me/premvio2)</span></label><input name="link" maxlength="300" value="${esc(m.link || "")}" placeholder="https://…">`}
-    <div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
-    <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>
+    ${forAgents ? "" : `<div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
+    <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>`}
     <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
-    ${dep ? `<label>Who can use this deposit option</label><select name="audience">
-      ${[["both", "Customers and agents"], ["customers", "Customers only"], ["agents", "Agents only (agent deposit portal)"]].map(([k, l]) => `<option value="${k}" ${(m.audience || (m.id ? "customers" : "both")) === k ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}
+    ${forAgents ? `<label>Which agents can use it</label>
+      <div class="seg"><label><input type="radio" name="who" value="all" ${chosen.size ? "" : "checked"}> All agents</label>
+        <label><input type="radio" name="who" value="some" ${chosen.size ? "checked" : ""}> Only chosen agents</label></div>
+      <div id="agPick" class="${chosen.size ? "" : "hidden"}">
+        <input id="agQ" placeholder="Search agent ID, name or city" autocomplete="off">
+        <div class="ag-list">${(agentsList || []).map((a) => `<label class="ag-row" data-q="${esc((a.member_id + " " + a.full_name + " " + (a.city || "")).toLowerCase())}">
+          <input type="checkbox" value="${a.id}" ${chosen.has(a.id) ? "checked" : ""}><span class="mono">${esc(a.member_id)}</span>
+          <span class="grow">${esc(a.full_name)}</span><span class="small muted">${esc(a.city || "")}${a.blocked ? " · blocked" : ""}</span></label>`).join("") || `<p class="small muted">No agents yet.</p>`}</div>
+        <p class="small muted" id="agCount"></p></div>` : ""}
     <div class="setting-row"><b>Active (visible)</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${m.active !== false ? "checked" : ""}><span></span></label></div>
     ${builtin ? `<p class="small muted mt">PremvioCash uses the agent system (city, street and a 24-hour code), so it has no extra fields.</p>` : `
     <h3 class="mt">Fields they fill in</h3>
-    <p class="small muted">${dep ? "Amount and a payment screenshot are always asked. Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
+    <p class="small muted">${forAgents ? "A payment screenshot is always asked (agents don't type an amount — you enter it when approving). Add e.g. “Sender number”." : dep ? "Amount and a payment screenshot are always asked. Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
     <div id="mfields"></div><button type="button" class="btn soft block mt" id="addMF">${ICONS.plus} Add field</button>`}
     <button class="btn block mt" id="saveM">Save method</button></form>`, (md) => {
     const f = $("#mf2", md);
     const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No extra fields — only amount + screenshot." : "No extra fields — only the amount.");
     if (fb) $("#addMF", md).onclick = fb.add;
+    if (forAgents) {
+      const pick = $("#agPick", md), count = () => ($("#agCount", md).textContent = $$(".ag-row input:checked", md).length + " agent(s) chosen");
+      $$('[name="who"]', md).forEach((r) => (r.onchange = () => pick.classList.toggle("hidden", f.who.value !== "some")));
+      $("#agQ", md).oninput = (e) => { const q = e.target.value.trim().toLowerCase(); $$(".ag-row", md).forEach((r) => r.classList.toggle("hidden", !!q && !r.dataset.q.includes(q))); };
+      $(".ag-list", md).onchange = count; count();
+    }
     f.logo.onchange = () => { const file = f.logo.files[0]; if (file) $("#lprev", md).innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; };
     f.onsubmit = (e) => {
       e.preventDefault();
       let flds;
       try { flds = fb ? fb.collect() : []; } catch (err) { return toast(err.message, "error"); }
-      const mn = f.min.value === "" ? null : Number(f.min.value), mx = f.max.value === "" ? null : Number(f.max.value);
+      const mn = !f.min || f.min.value === "" ? null : Number(f.min.value), mx = !f.max || f.max.value === "" ? null : Number(f.max.value);
+      let agent_ids = null;
+      if (forAgents && f.who.value === "some") {
+        agent_ids = $$(".ag-row input:checked", md).map((x) => x.value);
+        if (!agent_ids.length) return toast("Choose at least one agent, or pick “All agents”.", "error");
+      }
       if (mn != null && mx != null && mn > mx) return toast("Minimum can't be more than maximum.", "error");
       const link = f.link ? f.link.value.trim() : m.link || null;
       if (link && !/^https?:\/\//i.test(link)) return toast("The link must start with https://", "error");
@@ -2017,7 +2079,7 @@ function methodForm(m) {
         if (f.logo.files[0]) logo_url = await uploadImage(f.logo.files[0], "methods");
         const row = { kind: m.kind, name: f.mname.value.trim(), details: f.details.value.trim(), link: link || null, logo_url,
           min_amount: mn, max_amount: mx, sort: Number(f.sort.value) || 0, active: f.active.checked, fields: flds };
-        if (f.audience) row.audience = f.audience.value;
+        if (dep) { row.audience = forAgents ? "agents" : "customers"; row.agent_ids = forAgents ? agent_ids : null; }
         const { error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id) : await sb.from("payment_methods").insert(row);
         if (error) throw error;
         closeModal(); toast("Method saved.", "success"); route();
