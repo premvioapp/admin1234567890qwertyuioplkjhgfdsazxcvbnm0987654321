@@ -595,6 +595,33 @@ input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin
 .mk-ui .stats { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 @media (max-width: 480px) { .mk-ui .stat .v { font-size: 1.2rem; } .mk-ui .stat { padding: 12px; } .mk-bars .val { display: none; } }
 
+/* ============ V23: Agent Deposit Portal ============ */
+.dp-app { padding-bottom: 40px; }
+.dp-id { border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 4px 0 18px;
+  background: linear-gradient(135deg, rgba(25, 227, 173, .14), rgba(14, 165, 164, .05)), var(--card); }
+.dp-id .k { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.dp-id .v { font-size: 1.7rem; font-weight: 800; color: var(--blue); margin-top: 2px; }
+.dp-id .dp-bal { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.dp-id .dp-bal b { font-family: var(--mono); }
+.dp-h { margin: 0 0 10px; font-size: 1rem; }
+.dp-app .pm-grid { margin-bottom: 22px; }
+.dp-done { text-align: center; padding: 28px 18px; }
+.dp-done h2 { margin: 14px 0 6px; }
+.dp-check { width: 76px; height: 76px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 2.4rem; font-weight: 800;
+  color: #04140f; background: var(--grad); box-shadow: 0 0 0 10px rgba(20, 217, 164, .12); animation: dp-pop .45s ease-out; }
+@keyframes dp-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dp-check { animation: none; } }
+/* agent desk: button to the deposit portal */
+.tile-wide { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: -6px 0 18px; border-radius: 14px; text-decoration: none;
+  background: rgba(20, 217, 164, .08); border: 1px dashed rgba(20, 217, 164, .45); color: var(--text); }
+.tile-wide .ti { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--grad); color: #04140f; flex: none; }
+.tile-wide .ti svg { width: 22px; height: 22px; }
+.tile-wide span { font-size: .78rem; color: var(--muted); }
+.tile-wide em { font-style: normal; font-size: 1.3rem; color: var(--blue); }
+.tile-wide:active { transform: scale(.98); }
+.dp-back { display: inline-block; margin: 0 0 10px; color: var(--muted); font-size: .85rem; text-decoration: none; }
+.dp-back:hover { color: var(--blue); }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -625,7 +652,9 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
 // Each panel keeps its own login, so logging out of one never logs out the others.
-const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent\.html/i.test(location.pathname) ? "agent" : "customer";
+// agent.html and agent-deposit.html share the agent login (log in once, use both).
+const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
+  : /marketing\.html/i.test(location.pathname) ? "marketing" : "customer";
 const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "premvio-" + PV_PANEL + "-login" },
 });
@@ -1041,6 +1070,7 @@ const SECTIONS = [
   { id: "agents", label: "Staff (agents, admins, marketing)", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
   { id: "deposits", label: "Deposit requests", icon: ICONS.cash, count: "pending_deposits" },
+  { id: "agentdeposits", label: "Agent deposits", icon: ICONS.cash, count: "pending_agent_deposits" },
   { id: "payouts", label: "Withdrawal requests", icon: ICONS.wallet, count: "pending_payouts" },
   { id: "withdrawals", label: "PremvioCash codes", icon: ICONS.wallet, count: "pending_withdrawals" },
   { id: "methods", label: "Payment methods", icon: ICONS.grid },
@@ -1091,6 +1121,9 @@ function hashArg() { return decodeURIComponent((location.hash || "").slice(1).sp
 async function refreshCounts() {
   const { data } = await sb.rpc("admin_stats");
   if (!data) return;
+  const pend = (role) => sb.from("deposit_requests").select("id", { count: "exact", head: true }).eq("status", "pending").eq("requester_role", role);
+  const [c, a] = await Promise.all([pend("customer"), pend("agent")]);
+  if (!c.error && !a.error) { data.pending_deposits = c.count || 0; data.pending_agent_deposits = a.count || 0; }
   AD.stats = data;
   $$("[data-count]").forEach((el) => { const n = data[el.dataset.count]; el.textContent = n; el.classList.toggle("hidden", !n); });
 }
@@ -1100,7 +1133,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, deposits, payouts, methods, transactions, notify, settings }[s];
+  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, transactions, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1112,7 +1145,7 @@ function chips(list, cur, attr) {
 }
 function who(p) { return p ? `${esc(p.full_name)}<div class="small muted mono">${esc(p.member_id)}</div>` : "—"; }
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
-const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)" };
+const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -1153,7 +1186,7 @@ async function dashboard(v) {
   const max = Math.max(1, ...(daily || []).map((d) => Number(d.sales)));
   v.innerHTML = `<div class="stats">
     ${[["Sales today", money(s.sales_today)], ["Deposits today", money(s.loads_today)], ["Pending orders", s.pending_orders],
-       ["Deposit requests", s.pending_deposits ?? 0], ["Withdrawal requests", s.pending_payouts ?? 0], ["Pending KYC", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
+       ["Deposit requests", s.pending_deposits ?? 0], ["Agent deposits", s.pending_agent_deposits ?? 0], ["Withdrawal requests", s.pending_payouts ?? 0], ["Pending KYC", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
        ["Agents", s.agents], ["Customer balances", money(s.customer_balance)], ["Agent balances", money(s.agent_balance)]]
       .map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v">${val ?? 0}</div></div>`).join("")}
   </div>
@@ -1764,7 +1797,7 @@ async function transactions(v) {
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
   if (error) throw error;
-  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"]];
+  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"]];
   const inSum = data.filter((t) => t.amount > 0).reduce((a, t) => a + Number(t.amount), 0);
   const outSum = data.filter((t) => t.amount < 0).reduce((a, t) => a - Number(t.amount), 0);
   v.innerHTML = rangeBar(AD.txRange) + chips(types, AD.txType, "tt") +
@@ -1921,6 +1954,7 @@ async function methods(v) {
   const card = (m) => `<div class="pm-card ${m.active ? "" : "off"}">
     <div class="pm-logo">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>${esc((m.name || "?").slice(0, 2).toUpperCase())}</span>`}</div>
     <div class="grow"><b>${esc(m.name)}</b> ${m.code === "premviocash" ? `<span class="badge agent">built-in</span>` : ""} ${m.active ? "" : `<span class="badge cancelled">hidden</span>`}
+      ${m.kind === "deposit" ? `<span class="badge ${m.audience === "agents" ? "agent" : m.audience === "both" ? "admin" : "active"}">${{ agents: "agents only", both: "customers + agents", customers: "customers only" }[m.audience || "customers"]}</span>` : ""}
       <div class="small muted pm-details">${esc(m.details || "")}</div>
       <div class="small muted">${m.min_amount != null ? "Min " + money(m.min_amount) : ""}${m.max_amount != null ? " · Max " + money(m.max_amount) : ""}
         ${(m.fields || []).length ? " · Fields: " + m.fields.map((f) => esc(f.label)).join(", ") : ""}</div></div>
@@ -1952,15 +1986,17 @@ function methodForm(m) {
     <div class="row"><div class="pm-logo big" id="lprev">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>LOGO</span>`}</div>
       <input type="file" name="logo" accept="image/*"></div>
     <label>Name</label><input name="mname" required maxlength="40" value="${esc(m.name || "")}" placeholder="${dep ? "e.g. eSewa, Khalti, Bank, Telegram 2" : "e.g. eSewa, Bank transfer"}">
-    <label>${dep ? "Payment details shown to the customer" : "Instructions shown to the customer"}</label>
+    <label>${dep ? "Payment details shown to customers / agents" : "Instructions shown to the customer"}</label>
     <textarea name="details" maxlength="1000" placeholder="${dep ? "e.g. eSewa ID: 98XXXXXXXX (Premvio Pvt Ltd). Send the money, then upload the screenshot." : "e.g. We send the money to your eSewa within 1 hour."}">${esc(m.details || "")}</textarea>
     ${builtin ? "" : `<label>Button link <span class="muted">(optional — e.g. https://t.me/premvio2)</span></label><input name="link" maxlength="300" value="${esc(m.link || "")}" placeholder="https://…">`}
     <div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
     <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>
     <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
-    <div class="setting-row"><b>Show to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${m.active !== false ? "checked" : ""}><span></span></label></div>
+    ${dep ? `<label>Who can use this deposit option</label><select name="audience">
+      ${[["both", "Customers and agents"], ["customers", "Customers only"], ["agents", "Agents only (agent deposit portal)"]].map(([k, l]) => `<option value="${k}" ${(m.audience || (m.id ? "customers" : "both")) === k ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}
+    <div class="setting-row"><b>Active (visible)</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${m.active !== false ? "checked" : ""}><span></span></label></div>
     ${builtin ? `<p class="small muted mt">PremvioCash uses the agent system (city, street and a 24-hour code), so it has no extra fields.</p>` : `
-    <h3 class="mt">Fields the customer fills in</h3>
+    <h3 class="mt">Fields they fill in</h3>
     <p class="small muted">${dep ? "Amount and a payment screenshot are always asked. Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
     <div id="mfields"></div><button type="button" class="btn soft block mt" id="addMF">${ICONS.plus} Add field</button>`}
     <button class="btn block mt" id="saveM">Save method</button></form>`, (md) => {
@@ -1981,6 +2017,7 @@ function methodForm(m) {
         if (f.logo.files[0]) logo_url = await uploadImage(f.logo.files[0], "methods");
         const row = { kind: m.kind, name: f.mname.value.trim(), details: f.details.value.trim(), link: link || null, logo_url,
           min_amount: mn, max_amount: mx, sort: Number(f.sort.value) || 0, active: f.active.checked, fields: flds };
+        if (f.audience) row.audience = f.audience.value;
         const { error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id) : await sb.from("payment_methods").insert(row);
         if (error) throw error;
         closeModal(); toast("Method saved.", "success"); route();
@@ -1995,16 +2032,24 @@ async function viewProof(path) {
   if (error) { toast(errMsg(error), "error"); return null; }
   return u.signedUrl;
 }
-async function deposits(v) {
+function agentdeposits(v) { return deposits(v, "agent"); }
+async function deposits(v, depRole = "customer") {
   if (!AD.depFilter) AD.depFilter = "pending";
-  let q = sb.from("deposit_requests").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
+  let q = sb.from("deposit_requests").select("*, profiles(full_name, member_id, role)").order("created_at", { ascending: false }).limit(300);
   if (AD.depFilter !== "all") q = q.eq("status", AD.depFilter);
+  q = depRole === "agent" ? q.eq("requester_role", "agent") : q.neq("requester_role", "agent");
   const { data, error } = await q;
   if (error) throw error;
-  v.innerHTML = `<p class="muted small">Customers paid with one of your deposit methods and uploaded a screenshot. Check the screenshot and your account, then approve to add the money to their balance.</p>` +
+  const isAgent = (d) => d.requester_role === "agent";
+  v.innerHTML = (depRole === "agent"
+      ? `<p class="muted small">Agents paid you from the <b>Agent Deposit Portal</b> (agent-deposit.html) and uploaded a screenshot. They don't type an amount —
+        check the screenshot and your account, then press Approve and <b>type the amount you received</b>. It goes straight to that agent's balance.</p>`
+      : `<p class="muted small">Customers paid with one of your deposit methods and uploaded a screenshot. Check the screenshot and your account, then approve to add the money to their balance.
+        Agent deposits are on the <a href="#agentdeposits">Agent deposits</a> page.</p>`) +
     chips([["pending", "Waiting"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]], AD.depFilter, "df") +
-    table(["#", "Customer", "Method", "Amount", "Details", "Sent", "Screenshot", "Status", ""], data.map((d) => `<tr>
-      <td>${d.id}</td><td>${who(d.profiles)}</td><td><b>${esc(d.method_name)}</b></td><td><b>${money(d.amount)}</b></td>
+    table(["#", depRole === "agent" ? "Agent" : "Customer", "Method", "Amount", "Details", "Sent", "Screenshot", "Status", ""], data.map((d) => `<tr>
+      <td>${d.id}</td><td>${who(d.profiles)}${isAgent(d) ? `<span class="badge agent">agent</span>` : ""}</td><td><b>${esc(d.method_name)}</b></td>
+      <td>${d.amount != null ? `<b>${money(d.amount)}</b>` : `<span class="small muted">admin enters</span>`}</td>
       <td>${formView(d.form_data)}</td><td class="small">${fmtDate(d.created_at)}</td>
       <td>${d.proof_path ? `<button class="btn sm soft" data-proof="${esc(d.proof_path)}">🧾 View</button>` : "—"}</td>
       <td><span class="badge ${d.status === "approved" ? "completed" : d.status}">${d.status}</span>${d.admin_note ? `<div class="small muted">${esc(d.admin_note)}</div>` : ""}</td>
@@ -2019,21 +2064,29 @@ async function deposits(v) {
   $$("[data-dok]", v).forEach((b) => (b.onclick = async () => {
     const d = data.find((x) => x.id == b.dataset.dok);
     const url = d.proof_path ? await viewProof(d.proof_path) : null;
-    openModal(`<h2>Approve deposit #${d.id}</h2>
-      <p><b>${money(d.amount)}</b> via <b>${esc(d.method_name)}</b> from ${esc(d.profiles?.full_name || "")} (${esc(d.profiles?.member_id || "")})</p>
+    const ag = isAgent(d);
+    openModal(`<h2>Approve ${ag ? "agent " : ""}deposit #${d.id}</h2>
+      <p>${ag ? "" : `<b>${money(d.amount)}</b> `}via <b>${esc(d.method_name)}</b> from ${esc(d.profiles?.full_name || "")} (${esc(d.profiles?.member_id || "")})${ag ? ` <span class="badge agent">agent</span>` : ""}</p>
       ${formView(d.form_data)}
       ${url ? `<img src="${esc(url)}" alt="Screenshot" style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;background:#000;margin-top:10px">` : ""}
+      ${ag ? `<label>Amount you received (${CFG.CURRENCY})</label><input type="number" id="dokAmt" min="1" step="0.01" inputmode="decimal" required placeholder="e.g. 5000">
+      <p class="small muted">This amount is added to agent ${esc(d.profiles?.member_id || "")}'s balance.</p>` : ""}
       <p class="small muted mt">Only approve after you see the money in your account.</p>
-      <button class="btn success block mt" id="dokBtn">Approve — add ${money(d.amount)}</button>`, (m) => {
-      $("#dokBtn", m).onclick = () => busy($("#dokBtn", m), async () => {
-        const { error: e } = await sb.rpc("admin_review_deposit", { p_id: d.id, p_approve: true, p_note: null });
+      <button class="btn success block mt" id="dokBtn">${ag ? "Approve — add to agent balance" : `Approve — add ${money(d.amount)}`}</button>`, (m) => {
+      if (ag) $("#dokAmt", m).oninput = (e) => { const n = Number(e.target.value); $("#dokBtn", m).textContent = n > 0 ? `Approve — add ${money(n)} to ${d.profiles?.member_id || "agent"}` : "Approve — add to agent balance"; };
+      $("#dokBtn", m).onclick = () => {
+        const amt = ag ? Number($("#dokAmt", m).value) : null;
+        if (ag && !(amt > 0)) return toast("Enter the amount you received.", "error");
+        busy($("#dokBtn", m), async () => {
+        const { error: e } = await sb.rpc("admin_review_deposit", ag ? { p_id: d.id, p_approve: true, p_note: null, p_amount: amt } : { p_id: d.id, p_approve: true, p_note: null });
         if (e) throw e;
         closeModal(); toast("Deposit approved — balance added.", "success"); refreshCounts(); route();
-      });
+        });
+      };
     });
   }));
   $$("[data-dno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject deposit #${b.dataset.dno}</h2><form id="dnf">
-    <label>Reason (shown to customer)</label><input name="note" required maxlength="200" placeholder="e.g. Money not received / screenshot unclear">
+    <label>Reason (shown to them)</label><input name="note" required maxlength="200" placeholder="e.g. Money not received / screenshot unclear">
     <button class="btn danger block mt">Reject</button></form>`, (m) => {
     $("#dnf", m).onsubmit = (e) => {
       e.preventDefault();
