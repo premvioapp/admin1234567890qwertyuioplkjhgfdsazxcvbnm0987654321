@@ -665,6 +665,41 @@ input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin
 .pts-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
 .rewards-card .pts-row:first-child { border-top: 0; padding-top: 0; }
 
+/* ============ V28: reviews, PIN lock, vouchers ============ */
+.stars { color: var(--gold); letter-spacing: 1px; }
+.rating-line { font-size: .75rem; font-weight: 700; margin-top: 3px; }
+.review { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.review:last-child { border-bottom: 0; }
+.star-pick { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.star-pick button { font-size: 2.3rem; line-height: 1; background: none; border: 0; color: var(--line); cursor: pointer; padding: 2px; transition: transform .1s, color .1s; }
+.star-pick button.on { color: var(--gold); }
+.star-pick button:active { transform: scale(1.2); }
+.pin-screen { position: fixed; inset: 0; z-index: 300; background: var(--bg); display: grid; place-items: center; padding: 20px; }
+.pin-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(0, 0, 0, .6); display: grid; place-items: center; padding: 16px; backdrop-filter: blur(4px); }
+.pin-card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px 18px; width: 100%; max-width: 340px; }
+.pin-card .close { position: absolute; top: 10px; right: 10px; }
+.pin-pad { text-align: center; width: 100%; max-width: 300px; margin: 0 auto; }
+.pin-pad h2 { margin: 6px 0 2px; }
+.pin-logo { width: 72px; height: 72px; margin-bottom: 6px; }
+.pin-dots { display: flex; justify-content: center; gap: 16px; margin: 18px 0 6px; }
+.pin-dots i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted); transition: background .1s, border-color .1s; }
+.pin-dots i.on { background: var(--gold); border-color: var(--gold); }
+.pin-dots.shake { animation: pin-shake .35s; }
+@keyframes pin-shake { 25% { transform: translateX(-8px); } 50% { transform: translateX(8px); } 75% { transform: translateX(-4px); } }
+.pin-msg { color: var(--red); min-height: 1.3em; margin: 4px 0 10px; }
+.pin-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pin-keys button { height: 58px; border-radius: 16px; border: 1px solid var(--line); background: var(--card-2); color: var(--text); font: inherit; font-size: 1.4rem; font-weight: 700; cursor: pointer; }
+.pin-keys button:active { background: var(--line); transform: scale(.96); }
+.pin-pad.busy, .busy .pin-keys { opacity: .6; pointer-events: none; }
+.pin-input { text-align: center; letter-spacing: .6em; font-size: 1.3rem; font-weight: 800; }
+.v-amounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.v-amt { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: 14px; cursor: pointer; font: inherit; color: var(--text);
+  background: linear-gradient(135deg, rgba(255, 200, 61, .15), rgba(255, 159, 67, .08)); border: 1px dashed rgba(255, 200, 61, .5); }
+.v-amt b { color: var(--gold); } .v-amt span { font-size: .7rem; color: var(--muted); }
+.v-amt:active { transform: scale(.97); }
+@media (prefers-reduced-motion: reduce) { .pin-dots.shake { animation: none; } }
+.empty h2 { color: var(--text); }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1109,6 +1144,8 @@ const SECTIONS = [
   { id: "orders", label: "Orders", icon: ICONS.bag, count: "pending_orders" },
   { id: "products", label: "Products", icon: ICONS.star },
   { id: "promos", label: "Promo codes", icon: ICONS.spark },
+  { id: "vouchers", label: "Gift vouchers", icon: ICONS.cash },
+  { id: "reviews", label: "Reviews", icon: ICONS.star },
   { id: "features", label: "New features", icon: ICONS.spark },
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "agents", label: "Staff (agents, admins, marketing)", icon: ICONS.shield },
@@ -1178,7 +1215,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, products, promos, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, transactions, notify, settings }[s];
+  const fn = { dashboard, orders, products, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, transactions, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1190,7 +1227,7 @@ function chips(list, cur, attr) {
 }
 function who(p) { return p ? `${esc(p.full_name)}<div class="small muted mono">${esc(p.member_id)}</div>` : "—"; }
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
-const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)" };
+const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -1500,6 +1537,95 @@ function productForm(p = {}) {
         const { error } = p.id ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
         if (error) throw error;
         closeModal(); toast("Product saved.", "success"); route();
+      });
+    };
+  });
+}
+
+/* ---------------- REVIEWS ---------------- */
+async function reviews(v) {
+  if (!AD.revF) AD.revF = "all";
+  let q = sb.from("reviews").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
+  if (AD.revF === "hidden") q = q.eq("hidden", true);
+  if (AD.revF === "low") q = q.lte("rating", 2);
+  const { data, error } = await q;
+  if (error) throw error;
+  const all = data.filter((r) => !r.hidden), avg = all.length ? all.reduce((a, r) => a + r.rating, 0) / all.length : 0;
+  v.innerHTML = `<p class="muted small">Customers can rate an order after it is completed. Reviews show on the product with the customer's first name only. Hide rude or fake ones.</p>
+    <div class="stats"><div class="stat"><div class="k">Average (shown)</div><div class="v"><span class="stars">★</span> ${avg.toFixed(1)}</div></div>
+      <div class="stat"><div class="k">Reviews</div><div class="v">${data.length}</div></div></div>
+    ${chips([["all", "All"], ["low", "1–2 stars"], ["hidden", "Hidden"]], AD.revF, "rf")}
+    ${table(["Product", "Customer", "Rating", "Comment", "Date", ""], data.map((r) => `<tr class="${r.hidden ? "muted" : ""}">
+      <td><b>${esc(r.product_name)}</b><div class="small muted">Order #${r.order_id}</div></td>
+      <td>${who(r.profiles)}<div class="small muted">shown as “${esc(r.display_name)}”</div></td>
+      <td><span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span></td>
+      <td style="max-width:320px">${esc(r.comment || "—")}</td><td class="small">${fmtDate(r.created_at)}</td>
+      <td style="white-space:nowrap">${r.hidden ? `<span class="badge cancelled">hidden</span> ` : ""}
+        <button class="btn sm soft" data-rh="${r.id}">${r.hidden ? "Show" : "Hide"}</button><button class="btn sm ghost" data-rd="${r.id}">Delete</button></td></tr>`), "No reviews yet")}`;
+  $$("[data-rf]", v).forEach((c) => (c.onclick = () => { AD.revF = c.dataset.rf; route(); }));
+  $$("[data-rh]", v).forEach((b) => (b.onclick = async () => {
+    const r = data.find((x) => x.id == b.dataset.rh);
+    const { error: e } = await sb.from("reviews").update({ hidden: !r.hidden }).eq("id", r.id);
+    if (e) return toast(errMsg(e), "error");
+    toast(r.hidden ? "Review is visible again." : "Review hidden.", "success"); route();
+  }));
+  $$("[data-rd]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Delete review?", "The customer can write a new one for this order.", "Delete", true))) return;
+    const { error: e } = await sb.from("reviews").delete().eq("id", b.dataset.rd);
+    if (e) return toast(errMsg(e), "error");
+    toast("Deleted.", "success"); route();
+  }));
+}
+
+/* ---------------- GIFT VOUCHERS ---------------- */
+async function vouchers(v) {
+  if (!AD.vF) AD.vF = "active";
+  let q = sb.from("vouchers").select("*, buyer:profiles!vouchers_buyer_id_fkey(full_name, member_id), user:profiles!vouchers_redeemed_by_fkey(full_name, member_id)")
+    .order("created_at", { ascending: false }).limit(500);
+  if (AD.vF !== "all") q = q.eq("status", AD.vF);
+  const { data, error } = await q;
+  if (error) throw error;
+  const { data: act } = await sb.from("vouchers").select("amount").eq("status", "active");
+  const out = (act || []).reduce((a, x) => a + Number(x.amount), 0);
+  v.innerHTML = `<p class="muted small">Customers buy vouchers with their balance and give the code to friends, who redeem it for balance. You can also make free vouchers here for giveaways and prizes.</p>
+    <div class="stats"><div class="stat"><div class="k">Active vouchers</div><div class="v">${(act || []).length}</div></div>
+      <div class="stat"><div class="k">Value not used yet</div><div class="v">${money(out)}</div></div></div>
+    <div class="toolbar mt"><span class="grow">${chips([["active", "Not used"], ["redeemed", "Used"], ["cancelled", "Cancelled"], ["all", "All"]], AD.vF, "vf")}</span>
+      <button class="btn" id="mkV">${ICONS.plus} Make giveaway vouchers</button></div>
+    ${table(["Code", "Amount", "Made by", "Status", "Used by", "Dates", ""], data.map((x) => `<tr>
+      <td><b class="mono">${esc(x.code)}</b>${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ""}</td><td><b>${money(x.amount)}</b></td>
+      <td>${x.buyer ? who(x.buyer) : `<span class="badge admin">admin giveaway</span>`}</td>
+      <td><span class="badge ${x.status === "active" ? "active" : x.status === "redeemed" ? "completed" : "cancelled"}">${x.status === "active" ? "not used" : x.status}</span></td>
+      <td>${x.user ? who(x.user) : "—"}</td>
+      <td class="small">Made ${fmtDate(x.created_at)}${x.redeemed_at ? `<br>Used ${fmtDate(x.redeemed_at)}` : ""}${x.expires_at && x.status === "active" ? `<br>Expires ${fmtDate(x.expires_at)}` : ""}</td>
+      <td>${x.status === "active" ? `<button class="btn sm soft" onclick="copyText('${esc(x.code)}')">${ICONS.copy}</button><button class="btn sm ghost" data-vc="${x.id}">Cancel</button>` : ""}</td></tr>`), "No vouchers here")}`;
+  $$("[data-vf]", v).forEach((c) => (c.onclick = () => { AD.vF = c.dataset.vf; route(); }));
+  $$("[data-vc]", v).forEach((b) => (b.onclick = async () => {
+    const x = data.find((y) => y.id == b.dataset.vc);
+    if (!(await confirmBox("Cancel voucher?", x.buyer ? `The code stops working and ${money(x.amount)} goes back to the customer who bought it.` : "The code stops working.", "Cancel voucher", true))) return;
+    const { error: e } = await sb.rpc("cancel_voucher", { p_id: x.id });
+    if (e) return toast(errMsg(e), "error");
+    toast("Voucher cancelled.", "success"); route();
+  }));
+  $("#mkV").onclick = () => openModal(`<h2>Make giveaway vouchers</h2>
+    <p class="small muted">Free codes for prizes or promotions. Each code adds the amount to the balance of whoever redeems it.</p>
+    <form id="mvf"><div class="grid-2"><div><label>Amount (${CFG.CURRENCY})</label><input type="number" name="amt" min="1" step="1" required value="100"></div>
+      <div><label>How many codes</label><input type="number" name="n" min="1" max="200" step="1" required value="1"></div></div>
+      <label>Valid for (days, 0 = forever)</label><input type="number" name="days" min="0" step="1" value="30">
+      <label>Note <span class="muted">(optional)</span></label><input name="note" maxlength="120" placeholder="e.g. Facebook giveaway">
+      <button class="btn block mt">Make vouchers</button></form>`, (m) => {
+    $("#mvf", m).onsubmit = (e) => {
+      e.preventDefault();
+      const f = e.target, amt = Number(f.amt.value), n = Math.floor(Number(f.n.value));
+      busy($("button", f), async () => {
+        if (amt * n >= 5000 && !(await confirmBox("Big amount", `This makes ${n} codes worth ${money(amt * n)} in total. Continue?`, "Yes, make them"))) return;
+        const { data: codes, error: e2 } = await sb.rpc("admin_create_vouchers", { p_amount: amt, p_count: n, p_days: Math.floor(Number(f.days.value) || 0), p_note: f.note.value });
+        if (e2) throw e2;
+        const list = (codes || []).join("\n");
+        openModal(`<div class="empty"><div class="big">🎟️</div><h2>${codes.length} voucher${codes.length === 1 ? "" : "s"} · ${money(amt)} each</h2>
+          <textarea readonly style="min-height:160px;font-family:monospace">${esc(list)}</textarea>
+          <button class="btn block mt" id="cpAll">${ICONS.copy} Copy all codes</button><button class="btn ghost block mt" data-close>Done</button></div>`, (mm) => { $("#cpAll", mm).onclick = () => copyText(list); });
+        route();
       });
     };
   });
@@ -1978,7 +2104,7 @@ async function transactions(v) {
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
   if (error) throw error;
-  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"]];
+  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"], ["voucher", "Gift vouchers"]];
   const inSum = data.filter((t) => t.amount > 0).reduce((a, t) => a + Number(t.amount), 0);
   const outSum = data.filter((t) => t.amount < 0).reduce((a, t) => a - Number(t.amount), 0);
   v.innerHTML = rangeBar(AD.txRange) + chips(types, AD.txType, "tt") +
@@ -2045,6 +2171,9 @@ async function settings(v) {
       <div><label>Max % of an order paid with points</label><input type="number" name="points_max_percent" min="1" max="100" step="1" value="${esc(s.points_max_percent ?? 50)}"></div></div>
     <div class="setting-row mt"><div><b>Cart reminders</b><div class="small muted">“You left items in your cart” notification</div></div>${sw("cart_reminder_on", s.cart_reminder_on !== "false")}</div>
     <label>Remind after (hours)</label><input type="number" name="cart_reminder_hours" min="1" max="168" step="1" value="${esc(s.cart_reminder_hours ?? 24)}">
+    <div class="setting-row mt"><div><b>Customer reviews</b><div class="small muted">Customers rate completed orders</div></div>${sw("reviews_on", s.reviews_on !== "false")}</div>
+    <div class="setting-row"><div><b>Gift vouchers</b><div class="small muted">Customers can buy vouchers for friends</div></div>${sw("voucher_on", s.voucher_on !== "false")}</div>
+    <label>Voucher amounts customers can buy (${CFG.CURRENCY}, separated by commas)</label><input name="voucher_amounts" value="${esc(s.voucher_amounts || "100,500,1000,2000")}">
     <button class="btn block mt">Save rewards &amp; sales</button></form></div>
     <div class="card" style="max-width:620px"><h2>📢 Moving message</h2>
     <p class="small muted">A message that moves across the top of the customer Home page.</p>
@@ -2069,7 +2198,9 @@ async function settings(v) {
     const rows = [["ref_on", f.ref_on.checked ? "true" : "false"], ["ref_bonus_referrer", num("ref_bonus_referrer")], ["ref_bonus_friend", num("ref_bonus_friend")],
       ["ref_min_order", num("ref_min_order")], ["cashback_on", f.cashback_on.checked ? "true" : "false"], ["cashback_percent", num("cashback_percent")],
       ["points_max_percent", String(Math.min(100, Math.max(1, Number(f.points_max_percent.value) || 50)))],
-      ["cart_reminder_on", f.cart_reminder_on.checked ? "true" : "false"], ["cart_reminder_hours", String(Math.min(168, Math.max(1, Number(f.cart_reminder_hours.value) || 24)))]]
+      ["cart_reminder_on", f.cart_reminder_on.checked ? "true" : "false"], ["cart_reminder_hours", String(Math.min(168, Math.max(1, Number(f.cart_reminder_hours.value) || 24)))],
+      ["reviews_on", f.reviews_on.checked ? "true" : "false"], ["voucher_on", f.voucher_on.checked ? "true" : "false"],
+      ["voucher_amounts", f.voucher_amounts.value.split(",").map((x) => Math.floor(Number(x.trim()))).filter((x) => x > 0).join(",") || "100,500,1000"]]
       .map(([key, value]) => ({ key, value }));
     busy($("button.btn", f), async () => {
       const { error } = await sb.from("app_settings").upsert(rows);
