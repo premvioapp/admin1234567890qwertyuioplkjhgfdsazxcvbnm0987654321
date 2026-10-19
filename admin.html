@@ -631,6 +631,17 @@ input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin
 .ag-row input { width: auto; margin: 0; }
 .ag-row:hover { background: var(--card-2); }
 
+/* ============ V26: promo codes + gift a friend ============ */
+.promo-box { display: flex; gap: 8px; }
+.promo-box input { flex: 1; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.promo-box input[readonly] { border-color: var(--green); color: var(--green); }
+.promo-box .btn { flex: none; }
+.promo-msg { min-height: 1.2em; margin-top: 6px; }
+.gift-box { margin-top: 14px; border: 1px dashed rgba(255, 200, 61, .45); border-radius: 12px; padding: 10px 12px; background: rgba(255, 200, 61, .05); }
+.gift-toggle { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--text); font-weight: 700; cursor: pointer; }
+.gift-toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--gold); }
+.gift-tag { color: var(--gold); font-weight: 600; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1074,6 +1085,7 @@ const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: ICONS.grid },
   { id: "orders", label: "Orders", icon: ICONS.bag, count: "pending_orders" },
   { id: "products", label: "Products", icon: ICONS.star },
+  { id: "promos", label: "Promo codes", icon: ICONS.spark },
   { id: "features", label: "New features", icon: ICONS.spark },
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "agents", label: "Staff (agents, admins, marketing)", icon: ICONS.shield },
@@ -1143,7 +1155,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, products, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, transactions, notify, settings }[s];
+  const fn = { dashboard, orders, products, promos, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, transactions, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1216,7 +1228,9 @@ function formView(fd) {
 }
 function orderTable(list) {
   return table(["#", "Customer", "Product", "Qty", "Total", "Customer's form", "Date", "Status", ""], list.map((o) => `<tr>
-    <td>${o.id}</td><td>${who(o.profiles)}</td><td>${esc(o.product_name)}</td><td>${o.quantity}</td><td><b>${money(o.total)}</b></td>
+    <td>${o.id}</td><td>${who(o.profiles)}</td><td>${esc(o.product_name)}
+      ${o.is_gift ? `<div class="gift-tag small">🎁 GIFT for ${esc(o.gift?.to_name || "")}${o.gift?.to_member ? " (" + esc(o.gift.to_member) + ")" : ""}</div>${o.gift?.message ? `<div class="small muted">“${esc(o.gift.message)}”</div>` : ""}` : ""}</td>
+      <td>${o.quantity}</td><td><b>${money(o.total)}</b>${Number(o.discount) > 0 ? `<div class="small" style="color:var(--green)">🏷️ ${esc(o.promo_code || "")} −${money(o.discount)}</div>` : ""}</td>
     <td>${formView(o.form_data)}</td>
     <td class="small">${fmtDate(o.created_at)}</td>
     <td><span class="badge ${o.status}">${o.status}</span>${o.admin_note ? `<div class="small muted">${esc(o.admin_note)}</div>` : ""}
@@ -1444,6 +1458,121 @@ function productForm(p = {}) {
         const { error } = p.id ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
         if (error) throw error;
         closeModal(); toast("Product saved.", "success"); route();
+      });
+    };
+  });
+}
+
+/* ---------------- PROMO CODES (admin only) ---------------- */
+async function promos(v) {
+  const [{ data, error }, { data: uses }, { data: prods }] = await Promise.all([
+    sb.from("promo_codes").select("*").order("created_at", { ascending: false }),
+    sb.from("promo_uses").select("promo_id, discount, user_id"),
+    sb.from("products").select("id, name, active").order("sort").order("name"),
+  ]);
+  if (error) throw error;
+  const stat = (id) => { const u = (uses || []).filter((x) => x.promo_id === id); return { n: u.length, sum: u.reduce((a, x) => a + Number(x.discount), 0), people: new Set(u.map((x) => x.user_id)).size }; };
+  const now = Date.now();
+  const state = (c) => !c.active ? ["off", "cancelled"] : c.ends_at && new Date(c.ends_at) < now ? ["expired", "cancelled"]
+    : c.starts_at && new Date(c.starts_at) > now ? ["scheduled", "pending"] : c.max_uses && stat(c.id).n >= c.max_uses ? ["used up", "rejected"] : ["live", "active"];
+  const pname = (id) => (prods || []).find((x) => x.id === id)?.name || "deleted product";
+  const off = (c) => c.kind === "percent" ? `${Number(c.value)}% off${c.max_discount ? ` (max ${money(c.max_discount)})` : ""}` : `${money(c.value)} off`;
+  const totalSaved = (uses || []).reduce((a, x) => a + Number(x.discount), 0);
+  v.innerHTML = `<p class="muted small">Customers type a promo code in the Cart or in “Buy now”. The discount is checked on the server, so it can't be faked. Only admins can create codes.</p>
+    <div class="stats"><div class="stat"><div class="k">Codes</div><div class="v">${data.length}</div></div>
+      <div class="stat"><div class="k">Live now</div><div class="v">${data.filter((c) => state(c)[0] === "live").length}</div></div>
+      <div class="stat"><div class="k">Times used</div><div class="v">${(uses || []).length}</div></div>
+      <div class="stat"><div class="k">Total discount given</div><div class="v">${money(totalSaved)}</div></div></div>
+    <div class="toolbar mt"><span class="grow"></span><button class="btn" id="addPromo">${ICONS.plus} New promo code</button></div>
+    ${table(["Code", "Discount", "Rules", "Used", "Discount given", "Status", ""], data.map((c) => { const st = stat(c.id), [lbl, cls] = state(c); return `<tr>
+      <td><b class="mono" style="font-size:1.05rem">${esc(c.code)}</b>${c.note ? `<div class="small muted">${esc(c.note)}</div>` : ""}</td>
+      <td><b>${off(c)}</b></td>
+      <td class="small">${[c.min_order ? "Min order " + money(c.min_order) : "",
+        c.product_ids?.length ? "Only: " + c.product_ids.map((id) => esc(pname(id))).join(", ") : "All products",
+        (c.per_user === 1 ? "Once per customer" : c.per_user + "× per customer"),
+        c.starts_at ? "From " + fmtDate(c.starts_at) : "", c.ends_at ? "Until " + fmtDate(c.ends_at) : ""].filter(Boolean).join("<br>")}</td>
+      <td><b>${st.n}</b>${c.max_uses ? ` / ${c.max_uses}` : ""}<div class="small muted">${st.people} customer${st.people === 1 ? "" : "s"}</div></td>
+      <td>${money(st.sum)}</td>
+      <td><span class="badge ${cls}">${lbl}</span></td>
+      <td style="white-space:nowrap"><button class="btn sm soft" data-pedit="${c.id}">Edit</button>
+        <button class="btn sm ${c.active ? "ghost" : "success"}" data-ptog="${c.id}">${c.active ? "Turn off" : "Turn on"}</button>
+        ${st.n ? "" : `<button class="btn sm ghost" data-pdel="${c.id}">Delete</button>`}</td></tr>`; }), "No promo codes yet — create your first one")}`;
+  $("#addPromo").onclick = () => promoForm({}, prods || []);
+  $$("[data-pedit]", v).forEach((b) => (b.onclick = () => promoForm(data.find((c) => c.id == b.dataset.pedit), prods || [])));
+  $$("[data-ptog]", v).forEach((b) => (b.onclick = async () => {
+    const c = data.find((x) => x.id == b.dataset.ptog);
+    const { error: e } = await sb.from("promo_codes").update({ active: !c.active }).eq("id", c.id);
+    if (e) return toast(errMsg(e), "error");
+    toast(c.active ? `${c.code} turned off.` : `${c.code} is live.`, "success"); route();
+  }));
+  $$("[data-pdel]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Delete promo code?", "It was never used, so it can be deleted.", "Delete", true))) return;
+    const { error: e } = await sb.from("promo_codes").delete().eq("id", b.dataset.pdel);
+    if (e) return toast(errMsg(e), "error");
+    toast("Deleted.", "success"); route();
+  }));
+}
+// datetime-local <-> ISO (Nepal time on the admin's device)
+const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
+function promoForm(c, prods) {
+  const chosen = new Set(c.product_ids || []);
+  openModal(`<h2>${c.id ? "Edit promo code" : "New promo code"}</h2><form id="prf">
+    <label>Code <span class="muted">(3–30 letters/numbers, e.g. DASHAIN10)</span></label>
+    <div class="row"><input name="code" required maxlength="30" value="${esc(c.code || "")}" autocomplete="off" style="text-transform:uppercase;font-weight:800;letter-spacing:.06em" class="grow">
+      <button type="button" class="btn soft" id="genCode">🎲 Make one</button></div>
+    <label>Discount type</label>
+    <div class="seg"><label><input type="radio" name="kind" value="percent" ${c.kind !== "fixed" ? "checked" : ""}> Percent (%)</label>
+      <label><input type="radio" name="kind" value="fixed" ${c.kind === "fixed" ? "checked" : ""}> Fixed amount (${CFG.CURRENCY})</label></div>
+    <div class="grid-2"><div><label id="valLbl">Discount</label><input type="number" name="value" required min="0.01" step="0.01" value="${c.value ?? ""}"></div>
+      <div id="maxBox"><label>Max discount (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max_discount" min="1" step="0.01" value="${c.max_discount ?? ""}"></div></div>
+    <div class="grid-2"><div><label>Minimum order (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min_order" min="0" step="0.01" value="${c.min_order ?? ""}"></div>
+      <div><label>Total uses <span class="muted">(empty = unlimited)</span></label><input type="number" name="max_uses" min="1" step="1" value="${c.max_uses ?? ""}"></div></div>
+    <label>Uses per customer</label><input type="number" name="per_user" min="1" step="1" required value="${c.per_user ?? 1}">
+    <div class="grid-2"><div><label>Starts <span class="muted">optional</span></label><input type="datetime-local" name="starts_at" value="${toLocalInput(c.starts_at)}"></div>
+      <div><label>Ends <span class="muted">optional</span></label><input type="datetime-local" name="ends_at" value="${toLocalInput(c.ends_at)}"></div></div>
+    <label>Works on</label>
+    <div class="seg"><label><input type="radio" name="scope" value="all" ${chosen.size ? "" : "checked"}> All products</label>
+      <label><input type="radio" name="scope" value="some" ${chosen.size ? "checked" : ""}> Only chosen products</label></div>
+    <div id="prodPick" class="${chosen.size ? "" : "hidden"}"><div class="ag-list">${prods.map((p) => `<label class="ag-row"><input type="checkbox" value="${p.id}" ${chosen.has(p.id) ? "checked" : ""}>
+      <span class="grow">${esc(p.name)}</span>${p.active ? "" : `<span class="small muted">hidden</span>`}</label>`).join("") || `<p class="small muted">No products yet.</p>`}</div></div>
+    <label>Note for you <span class="muted">(optional, customers don't see it)</span></label><input name="note" maxlength="120" value="${esc(c.note || "")}" placeholder="e.g. Dashain Facebook campaign">
+    <div class="setting-row"><b>Active</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${c.active !== false ? "checked" : ""}><span></span></label></div>
+    <div class="pm-info mt" id="prev"></div>
+    <button class="btn block mt" id="saveP">Save promo code</button></form>`, (m) => {
+    const f = $("#prf", m);
+    const paint = () => {
+      const pct = f.kind.value === "percent";
+      $("#valLbl", m).textContent = pct ? "Discount (%)" : `Discount (${CFG.CURRENCY})`;
+      f.value.max = pct ? 100 : "";
+      $("#maxBox", m).classList.toggle("hidden", !pct);
+      $("#prodPick", m).classList.toggle("hidden", f.scope.value !== "some");
+      const v = Number(f.value.value) || 0, code = f.code.value.trim().toUpperCase() || "CODE";
+      $("#prev", m).innerHTML = `Customers type <b class="mono">${esc(code)}</b> → ${pct ? `${v}% off` : `${money(v)} off`}${pct && f.max_discount.value ? ` (max ${money(f.max_discount.value)})` : ""}${f.min_order.value ? ` on orders over ${money(f.min_order.value)}` : ""}.`;
+    };
+    f.oninput = paint; f.onchange = paint; paint();
+    $("#genCode", m).onclick = () => { const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; f.code.value = "PV" + Array.from({ length: 6 }, () => a[Math.floor(Math.random() * a.length)]).join(""); paint(); };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      const code = f.code.value.trim().toUpperCase();
+      if (!/^[A-Z0-9_-]{3,30}$/.test(code)) return toast("Code must be 3–30 letters or numbers (no spaces).", "error");
+      const kind = f.kind.value, value = Number(f.value.value);
+      if (!(value > 0)) return toast("Enter the discount.", "error");
+      if (kind === "percent" && value > 100) return toast("Percent can't be more than 100.", "error");
+      const num = (el) => (el.value === "" ? null : Number(el.value));
+      const starts = f.starts_at.value ? new Date(f.starts_at.value).toISOString() : null, ends = f.ends_at.value ? new Date(f.ends_at.value).toISOString() : null;
+      if (starts && ends && ends <= starts) return toast("End must be after start.", "error");
+      let product_ids = null;
+      if (f.scope.value === "some") {
+        product_ids = $$("#prodPick input:checked", m).map((x) => Number(x.value));
+        if (!product_ids.length) return toast("Choose at least one product, or pick “All products”.", "error");
+      }
+      const row = { code, kind, value, max_discount: kind === "percent" ? num(f.max_discount) : null, min_order: num(f.min_order),
+        max_uses: num(f.max_uses), per_user: Math.max(1, Math.floor(Number(f.per_user.value) || 1)), starts_at: starts, ends_at: ends,
+        product_ids, note: f.note.value.trim() || null, active: f.active.checked };
+      busy($("#saveP", m), async () => {
+        const { error } = c.id ? await sb.from("promo_codes").update(row).eq("id", c.id) : await sb.from("promo_codes").insert(row);
+        if (error) throw /duplicate|unique/i.test(error.message) ? new Error(`The code ${code} already exists.`) : error;
+        closeModal(); toast(`Promo code ${code} saved.`, "success"); route();
       });
     };
   });
