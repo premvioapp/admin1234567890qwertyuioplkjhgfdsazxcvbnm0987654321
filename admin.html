@@ -642,6 +642,29 @@ input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin
 .gift-toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--gold); }
 .gift-tag { color: var(--gold); font-weight: 600; }
 
+/* ============ V27: flash sale, stock, points, invites ============ */
+.product .prices { margin-top: 4px; line-height: 1.3; }
+.product .prices .price { color: var(--gold); font-weight: 800; }
+.old-price { color: var(--muted); font-size: .8rem; }
+.sale-pct { background: var(--red); color: #fff; font-size: .68rem; font-weight: 800; padding: 1px 6px; border-radius: 6px; vertical-align: middle; }
+.sale-cd { font-size: .72rem; font-weight: 800; color: var(--red); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.sale-cd.big { font-size: .95rem; margin-top: 6px; }
+.big-price .price { color: var(--gold); font-weight: 800; font-size: 1.3rem; }
+.sale-badge { position: absolute; top: 8px; right: 8px; background: var(--red); color: #fff; font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; }
+.product.onsale { border-color: rgba(255, 93, 108, .5); }
+.stock-tag { display: inline-block; margin-top: 4px; font-size: .7rem; font-weight: 800; color: var(--orange); }
+.stock-tag.out { color: var(--red); }
+.product.soldout .ph { filter: grayscale(1); opacity: .55; }
+.pts-toggle { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 200, 61, .07); border: 1px solid rgba(255, 200, 61, .3); color: var(--text); cursor: pointer; }
+.pts-toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--gold); flex: none; }
+.pts-toggle small { display: block; font-weight: 500; }
+.ref-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.ref-stats div { background: var(--card-2); border-radius: 12px; padding: 10px 4px; }
+.ref-stats b { display: block; font-size: 1.05rem; }
+.ref-stats span { font-size: .72rem; color: var(--muted); }
+.pts-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.rewards-card .pts-row:first-child { border-top: 0; padding-top: 0; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1167,7 +1190,7 @@ function chips(list, cur, attr) {
 }
 function who(p) { return p ? `${esc(p.full_name)}<div class="small muted mono">${esc(p.member_id)}</div>` : "—"; }
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
-const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)" };
+const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -1230,7 +1253,7 @@ function orderTable(list) {
   return table(["#", "Customer", "Product", "Qty", "Total", "Customer's form", "Date", "Status", ""], list.map((o) => `<tr>
     <td>${o.id}</td><td>${who(o.profiles)}</td><td>${esc(o.product_name)}
       ${o.is_gift ? `<div class="gift-tag small">🎁 GIFT for ${esc(o.gift?.to_name || "")}${o.gift?.to_member ? " (" + esc(o.gift.to_member) + ")" : ""}</div>${o.gift?.message ? `<div class="small muted">“${esc(o.gift.message)}”</div>` : ""}` : ""}</td>
-      <td>${o.quantity}</td><td><b>${money(o.total)}</b>${Number(o.discount) > 0 ? `<div class="small" style="color:var(--green)">🏷️ ${esc(o.promo_code || "")} −${money(o.discount)}</div>` : ""}</td>
+      <td>${o.quantity}</td><td><b>${money(o.total)}</b>${Number(o.discount) > 0 ? `<div class="small" style="color:var(--green)">🏷️ ${esc(o.promo_code || "")} −${money(o.discount)}</div>` : ""}${Number(o.points_used) > 0 ? `<div class="small" style="color:var(--green)">⭐ points −${money(o.points_used)}</div>` : ""}</td>
     <td>${formView(o.form_data)}</td>
     <td class="small">${fmtDate(o.created_at)}</td>
     <td><span class="badge ${o.status}">${o.status}</span>${o.admin_note ? `<div class="small muted">${esc(o.admin_note)}</div>` : ""}
@@ -1332,7 +1355,10 @@ async function products(v) {
       <td><b>${esc(p.name)}</b><div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
       <td><b>${money(p.price)}</b></td><td class="small">${p.min_qty} – ${p.max_qty}</td>
       <td class="small">${(p.fields || []).map((f) => esc(f.label) + (f.required ? "*" : "")).join(", ") || "—"}</td>
-      <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span></td>
+      <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span>
+        ${p.out_of_stock ? `<div><span class="badge rejected">out of stock</span></div>` : ""}
+        ${p.daily_limit != null ? `<div class="small muted">limit ${p.daily_limit}/day</div>` : ""}
+        ${p.sale_price != null && (!p.sale_ends_at || new Date(p.sale_ends_at) > Date.now()) ? `<div><span class="badge pending">⚡ sale ${money(p.sale_price)}</span></div>${p.sale_ends_at ? `<div class="small muted">until ${fmtDate(p.sale_ends_at)}</div>` : ""}` : ""}</td>
       <td class="pin-col">${p.pinned
         ? `<span class="badge admin">📌 ${esc(p.pin_badge || "Recommended")}</span><div class="mt"><button class="btn sm soft" data-pin="${p.id}">Edit badge</button><button class="btn sm ghost" data-unpin="${p.id}">Unpin</button></div>`
         : `<button class="btn sm soft" data-pin="${p.id}" ${nPin >= 4 ? `title="4 products are already pinned"` : ""}>📌 Pin</button>`}</td>
@@ -1399,6 +1425,15 @@ function productForm(p = {}) {
     <div><label>Maximum quantity</label><input type="number" name="max_qty" min="1" value="${p.max_qty ?? 1000}"></div></div>
     <label>Description</label><textarea name="description" maxlength="3000">${esc(p.description || "")}</textarea>
     <div class="setting-row"><b>Visible to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${p.active !== false ? "checked" : ""}><span></span></label></div>
+    <div class="setting-row"><div><b>Out of stock</b><div class="small muted">Shown to customers but they can't buy it</div></div><label class="switch" style="margin:0"><input type="checkbox" name="oos" ${p.out_of_stock ? "checked" : ""}><span></span></label></div>
+    <label>Daily limit <span class="muted">(optional — most units sold per day, all customers together)</span></label>
+    <input type="number" name="daily_limit" min="0" step="1" value="${p.daily_limit ?? ""}" placeholder="No limit">
+
+    <h3 class="mt">⚡ Flash sale <span class="muted small">(optional)</span></h3>
+    <p class="small muted">Customers see the old price crossed out and a countdown. Leave the sale price empty for no sale.</p>
+    <div class="grid-2"><div><label>Sale price (${CFG.CURRENCY})</label><input type="number" name="sale_price" min="0" step="0.01" value="${p.sale_price ?? ""}"></div>
+      <div><label>Starts <span class="muted">(empty = now)</span></label><input type="datetime-local" name="sale_starts_at" value="${toLocalInput(p.sale_starts_at)}"></div></div>
+    <label>Ends <span class="muted">(shows a countdown)</span></label><input type="datetime-local" name="sale_ends_at" value="${toLocalInput(p.sale_ends_at)}">
 
     <h3 class="mt">Order form for this product</h3>
     <p class="small muted">Customers fill this in when they buy (quantity is always asked). Add, edit, reorder or remove fields.</p>
@@ -1450,11 +1485,18 @@ function productForm(p = {}) {
         if (fd.type !== "select") delete fd.options;
       }
       const minq = Math.max(1, Math.floor(Number(f.min_qty.value) || 1)), maxq = Math.max(minq, Math.floor(Number(f.max_qty.value) || minq));
+      const salePrice = f.sale_price.value === "" ? null : Number(f.sale_price.value);
+      const saleStart = f.sale_starts_at.value ? new Date(f.sale_starts_at.value).toISOString() : null;
+      const saleEnd = f.sale_ends_at.value ? new Date(f.sale_ends_at.value).toISOString() : null;
+      if (salePrice != null && salePrice >= Number(f.price.value)) return toast("Sale price must be lower than the normal price.", "error");
+      if (saleStart && saleEnd && saleEnd <= saleStart) return toast("Sale end must be after the start.", "error");
       busy($('button.btn:not([type="button"])', f), async () => {
         let image_url = p.image_url || null;
         if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "products");
         const row = { name: f.pname.value.trim(), price: Number(f.price.value), sort: Number(f.sort.value) || 0,
-          description: f.description.value.trim(), active: f.active.checked, image_url, fields, min_qty: minq, max_qty: maxq };
+          description: f.description.value.trim(), active: f.active.checked, image_url, fields, min_qty: minq, max_qty: maxq,
+          out_of_stock: f.oos.checked, daily_limit: f.daily_limit.value === "" ? null : Math.max(0, Math.floor(Number(f.daily_limit.value))),
+          sale_price: salePrice, sale_starts_at: salePrice == null ? null : saleStart, sale_ends_at: salePrice == null ? null : saleEnd };
         const { error } = p.id ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
         if (error) throw error;
         closeModal(); toast("Product saved.", "success"); route();
@@ -1513,7 +1555,7 @@ async function promos(v) {
   }));
 }
 // datetime-local <-> ISO (Nepal time on the admin's device)
-const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
+function toLocalInput(iso) { if (!iso) return ""; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); }
 function promoForm(c, prods) {
   const chosen = new Set(c.product_ids || []);
   openModal(`<h2>${c.id ? "Edit promo code" : "New promo code"}</h2><form id="prf">
@@ -1763,7 +1805,7 @@ async function personView(v, id, back) {
       ${u.blocked ? `<span class="badge blocked">blocked</span>` : ""}</h2><div class="mono muted">${esc(u.member_id)}</div></div>
       <div style="text-align:right"><div class="small muted">Balance</div><div style="font-size:1.6rem;font-weight:800">${money(u.balance)}</div></div></div>
     <div class="info-grid mt">
-      ${[["Phone", u.phone], ["Email", staff ? "—" : u.email], ["Country", u.country], ["City", u.city], ["Street", u.street], ["KYC", u.kyc_status], ["Joined", fmtDate(u.created_at)]]
+      ${[["Phone", u.phone], ["Email", staff ? "—" : u.email], ["Country", u.country], ["City", u.city], ["Street", u.street], ["KYC", u.kyc_status], ...(staff ? [] : [["Points", Number(u.points || 0)], ["Invite reward", u.referred_by ? (u.ref_rewarded ? "given" : "waiting for 1st order") : "—"]]), ["Joined", fmtDate(u.created_at)]]
         .filter(([, val]) => val).map(([k, val]) => `<div><div class="k">${k}</div><div class="v">${esc(val)}</div></div>`).join("")}
     </div>
     <div class="money-actions mt"><button class="btn deposit" id="dep">Deposit</button><button class="btn withdraw" id="wd">Withdraw</button></div>
@@ -1936,7 +1978,7 @@ async function transactions(v) {
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
   if (error) throw error;
-  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"]];
+  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"]];
   const inSum = data.filter((t) => t.amount > 0).reduce((a, t) => a + Number(t.amount), 0);
   const outSum = data.filter((t) => t.amount < 0).reduce((a, t) => a - Number(t.amount), 0);
   v.innerHTML = rangeBar(AD.txRange) + chips(types, AD.txType, "tt") +
@@ -1992,7 +2034,19 @@ async function settings(v) {
   const { data } = await sb.from("app_settings").select("*");
   const s = Object.fromEntries((data || []).map((r) => [r.key, r.value]));
   const dir = s.ticker_dir === "rtl" ? "rtl" : "ltr", spd = s.ticker_speed || "normal";
-  v.innerHTML = `<div class="card" style="max-width:620px"><h2>📢 Moving message</h2>
+  const sw = (name, on) => `<label class="switch" style="margin:0"><input type="checkbox" name="${name}" ${on ? "checked" : ""}><span></span></label>`;
+  v.innerHTML = `<div class="card" style="max-width:620px"><h2>🎁 Rewards &amp; sales</h2><form id="rwf">
+    <div class="setting-row"><div><b>Refer a friend</b><div class="small muted">Bonus is paid when the invited friend's first order is completed</div></div>${sw("ref_on", s.ref_on !== "false")}</div>
+    <div class="grid-2"><div><label>Bonus for the inviter (${CFG.CURRENCY})</label><input type="number" name="ref_bonus_referrer" min="0" step="1" value="${esc(s.ref_bonus_referrer ?? 20)}"></div>
+      <div><label>Bonus for the new friend (${CFG.CURRENCY})</label><input type="number" name="ref_bonus_friend" min="0" step="1" value="${esc(s.ref_bonus_friend ?? 20)}"></div></div>
+    <label>Friend's first order must be at least (${CFG.CURRENCY})</label><input type="number" name="ref_min_order" min="0" step="1" value="${esc(s.ref_min_order ?? 0)}">
+    <div class="setting-row mt"><div><b>Cashback points</b><div class="small muted">Customers earn points on completed orders (1 point = ${CFG.CURRENCY} 1)</div></div>${sw("cashback_on", s.cashback_on === "true")}</div>
+    <div class="grid-2"><div><label>Cashback (% of order)</label><input type="number" name="cashback_percent" min="0" max="50" step="0.1" value="${esc(s.cashback_percent ?? 1)}"></div>
+      <div><label>Max % of an order paid with points</label><input type="number" name="points_max_percent" min="1" max="100" step="1" value="${esc(s.points_max_percent ?? 50)}"></div></div>
+    <div class="setting-row mt"><div><b>Cart reminders</b><div class="small muted">“You left items in your cart” notification</div></div>${sw("cart_reminder_on", s.cart_reminder_on !== "false")}</div>
+    <label>Remind after (hours)</label><input type="number" name="cart_reminder_hours" min="1" max="168" step="1" value="${esc(s.cart_reminder_hours ?? 24)}">
+    <button class="btn block mt">Save rewards &amp; sales</button></form></div>
+    <div class="card" style="max-width:620px"><h2>📢 Moving message</h2>
     <p class="small muted">A message that moves across the top of the customer Home page.</p>
     <form id="tkf">
       <div class="setting-row"><b>Show moving message</b><label class="switch" style="margin:0"><input type="checkbox" name="on" ${s.ticker_on === "true" ? "checked" : ""}><span></span></label></div>
@@ -2009,6 +2063,20 @@ async function settings(v) {
     <button class="btn block mt">Save settings</button></form></div>
     <div class="card" style="max-width:620px"><h3>Your account</h3>
       <p class="small">You are <b>${esc(AD.me.member_id)}</b> (${esc(AD.me.full_name)}). Another admin can reset your password from Agents &amp; admins.</p></div>`;
+  $("#rwf").onsubmit = (e) => {
+    e.preventDefault();
+    const f = e.target, num = (n) => String(Math.max(0, Number(f[n].value) || 0));
+    const rows = [["ref_on", f.ref_on.checked ? "true" : "false"], ["ref_bonus_referrer", num("ref_bonus_referrer")], ["ref_bonus_friend", num("ref_bonus_friend")],
+      ["ref_min_order", num("ref_min_order")], ["cashback_on", f.cashback_on.checked ? "true" : "false"], ["cashback_percent", num("cashback_percent")],
+      ["points_max_percent", String(Math.min(100, Math.max(1, Number(f.points_max_percent.value) || 50)))],
+      ["cart_reminder_on", f.cart_reminder_on.checked ? "true" : "false"], ["cart_reminder_hours", String(Math.min(168, Math.max(1, Number(f.cart_reminder_hours.value) || 24)))]]
+      .map(([key, value]) => ({ key, value }));
+    busy($("button.btn", f), async () => {
+      const { error } = await sb.from("app_settings").upsert(rows);
+      if (error) throw error;
+      toast("Rewards & sales saved.", "success");
+    });
+  };
   $("#tkf").onsubmit = (e) => {
     e.preventDefault();
     const f = e.target, text = f.text.value.trim();
