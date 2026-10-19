@@ -734,6 +734,11 @@ input[type="file"]::file-selector-button { border: 0; padding: 10px 14px; margin
 .report-btn .ri { font-size: 1.6rem; }
 .report-btn .dl { flex: none; font-weight: 800; color: var(--green); font-size: .85rem; }
 .report-btn:disabled { opacity: .6; cursor: wait; }
+.comm-card { margin: 0 0 14px; }
+.comm-rates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 8px; }
+.comm-rates div { background: var(--card-2); border-radius: 12px; padding: 10px 12px; }
+.comm-rates span { display: block; font-size: .72rem; color: var(--muted); }
+.comm-rates b { font-size: 1.4rem; color: var(--gold); }
 
 </style>
 <title>Premvio Admin</title>
@@ -2046,18 +2051,40 @@ async function agents(v) {
     <form class="toolbar" id="ss"><input name="q" placeholder="Search ID, name, city, phone" value="${esc(AD.staffQ)}">
     ${sortSelect(AD.staffSort || "new")}<button class="btn soft">Search</button><button type="button" class="btn" id="addStaff">${ICONS.plus} Add staff</button></form>
     <p class="small muted">Only you can create staff IDs. They log in with their ID and password (agents at <b>agent.html</b>, admins at <b>admin.html</b>, marketing managers at <b>marketing.html</b>).</p>
-    ${table(["ID / name", "Role", "Location", "Phone", "Balance", "Status", ""], data.map((u) => `<tr>
+    ${table(["ID / name", "Role", "Location", "Phone", "Balance", "Commission", "Status", ""], data.map((u) => `<tr>
       <td>${who(u)}</td><td><span class="badge ${u.role}">${u.role}</span></td>
       <td class="small">${esc([u.street, u.city, u.country].filter(Boolean).join(", ") || "—")}</td><td>${esc(u.phone || "—")}</td>
-      <td><b>${money(u.balance)}</b></td><td><span class="badge ${u.blocked ? "blocked" : "active"}">${u.blocked ? "blocked" : "active"}</span></td>
+      <td><b>${money(u.balance)}</b></td>
+      <td class="small">${u.role === "agent" ? (Number(u.commission_load) || Number(u.commission_payout) ? `${Number(u.commission_load)}% top-up<br>${Number(u.commission_payout)}% payout` : `<span class="muted">none</span>`) + `<br><button class="btn sm soft" data-comm="${u.id}">Set</button>` : "—"}</td>
+      <td><span class="badge ${u.blocked ? "blocked" : "active"}">${u.blocked ? "blocked" : "active"}</span></td>
       <td style="white-space:nowrap">${u.role === "marketing" ? "" : `<button class="btn sm deposit" data-dep="${u.id}">Deposit</button>
         <button class="btn sm withdraw" data-wd="${u.id}">Withdraw</button>`}
         <a class="btn sm soft" href="#agents/${u.id}">${u.role === "marketing" ? "Open" : "History"}</a></td></tr>`), "No staff yet — add one")}`;
   $("#ss").onsubmit = (e) => { e.preventDefault(); AD.staffQ = e.target.q.value; route(); };
   $("#ss").sort.onchange = (e) => { AD.staffSort = e.target.value; route(); };
   $("#addStaff").onclick = () => staffForm();
+  $$("[data-comm]", v).forEach((b) => (b.onclick = () => commissionModal(data.find((u) => u.id === b.dataset.comm), route)));
   $$("[data-dep]", v).forEach((b) => (b.onclick = () => moneyModal(data.find((u) => u.id === b.dataset.dep), "deposit")));
   $$("[data-wd]", v).forEach((b) => (b.onclick = () => moneyModal(data.find((u) => u.id === b.dataset.wd), "withdraw")));
+}
+// 💰 set one agent's commission %
+function commissionModal(u, after) {
+  openModal(`<h2>💰 Commission for ${esc(u.member_id)}</h2><p class="small muted">${esc(u.full_name)} earns this automatically on every top-up / withdrawal they do. It is added to their agent balance.</p>
+    <form id="cmf"><div class="grid-2"><div><label>% on customer top-ups</label><input type="number" name="l" min="0" max="20" step="0.01" value="${Number(u.commission_load || 0)}"></div>
+      <div><label>% on withdrawals paid</label><input type="number" name="p" min="0" max="20" step="0.01" value="${Number(u.commission_payout || 0)}"></div></div>
+      <div class="pm-info mt" id="cmEx"></div>
+      <button class="btn block mt">Save commission</button></form>`, (m) => {
+    const f = $("#cmf", m), ex = () => ($("#cmEx", m).innerHTML = `Example: top-up of ${money(1000)} → agent earns <b>${money(10 * (Number(f.l.value) || 0))}</b> · withdrawal of ${money(1000)} → <b>${money(10 * (Number(f.p.value) || 0))}</b>. Use 0 for no commission.`);
+    f.oninput = ex; ex();
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", f), async () => {
+        const { error } = await sb.rpc("admin_set_commission", { p_user: u.id, p_load: Number(f.l.value) || 0, p_payout: Number(f.p.value) || 0 });
+        if (error) throw error;
+        closeModal(); toast("Commission saved. The agent was notified.", "success"); after && after();
+      });
+    };
+  });
 }
 const STAFF_ROLES = {
   agent: { label: "Agent", page: "agent.html", hint: "Tops up customers and pays out PremvioCash codes. Has a cash balance." },
@@ -2136,6 +2163,7 @@ async function personView(v, id, back) {
     <div class="row wrap mt">
       ${staff ? `<button class="btn sm soft" id="edit">Edit details</button><button class="btn sm soft" id="cid">Change login ID</button><button class="btn sm soft" id="pw">Reset password</button>
         <button class="btn sm soft" id="role">Change role</button>
+        ${u.role === "agent" ? `<button class="btn sm soft" id="comm">💰 Commission (${Number(u.commission_load || 0)}% / ${Number(u.commission_payout || 0)}%)</button>` : ""}
         ${u.role === "admin" && u.id !== AD.me.id ? `<button class="btn sm soft" id="mfaReset">Reset two-step login</button>` : ""}` : ""}
       ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>
         <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}
@@ -2188,6 +2216,7 @@ async function personView(v, id, back) {
       });
     };
   });
+  if ($("#comm")) $("#comm").onclick = () => commissionModal(u, reload);
   if ($("#role")) $("#role").onclick = () => openModal(`<h2>Change role of ${esc(u.member_id)}</h2><form id="rf">
       <label>New role</label><select name="r">${Object.entries(STAFF_ROLES).map(([k, x]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${x.label}</option>`).join("")}</select>
       <p class="small muted" id="rHint"></p><button class="btn block mt">Change role</button></form>`, (m) => {
@@ -2373,9 +2402,7 @@ async function settings(v) {
     <div class="setting-row"><div><b>Gift vouchers</b><div class="small muted">Customers can buy vouchers for friends</div></div>${sw("voucher_on", s.voucher_on !== "false")}</div>
     <label>Voucher amounts customers can buy (${CFG.CURRENCY}, separated by commas)</label><input name="voucher_amounts" value="${esc(s.voucher_amounts || "100,500,1000,2000")}">
     <div class="setting-row mt"><div><b>Help chat</b><div class="small muted">Customers can chat with you inside the app</div></div>${sw("help_on", s.help_on !== "false")}</div>
-    <h3 class="mt">💰 Agent commission</h3><p class="small muted">Added to the agent's balance automatically. 0 = no commission.</p>
-    <div class="grid-2"><div><label>% on customer top-ups</label><input type="number" name="agent_commission_load" min="0" max="10" step="0.1" value="${esc(s.agent_commission_load ?? 0)}"></div>
-      <div><label>% on withdrawals paid</label><input type="number" name="agent_commission_payout" min="0" max="10" step="0.1" value="${esc(s.agent_commission_payout ?? 0)}"></div></div>
+    <p class="small muted mt">💰 Agent commission is set for each agent separately: Staff → open the agent → <b>Commission</b>.</p>
     <button class="btn block mt">Save rewards &amp; sales</button></form></div>
     <div class="card" style="max-width:620px"><h2>📢 Moving message</h2>
     <p class="small muted">A message that moves across the top of the customer Home page.</p>
@@ -2403,8 +2430,6 @@ async function settings(v) {
       ["cart_reminder_on", f.cart_reminder_on.checked ? "true" : "false"], ["cart_reminder_hours", String(Math.min(168, Math.max(1, Number(f.cart_reminder_hours.value) || 24)))],
       ["reviews_on", f.reviews_on.checked ? "true" : "false"], ["voucher_on", f.voucher_on.checked ? "true" : "false"],
       ["help_on", f.help_on.checked ? "true" : "false"],
-      ["agent_commission_load", String(Math.min(10, Math.max(0, Number(f.agent_commission_load.value) || 0)))],
-      ["agent_commission_payout", String(Math.min(10, Math.max(0, Number(f.agent_commission_payout.value) || 0)))],
       ["voucher_amounts", f.voucher_amounts.value.split(",").map((x) => Math.floor(Number(x.trim()))).filter((x) => x > 0).join(",") || "100,500,1000"]]
       .map(([key, value]) => ({ key, value }));
     busy($("button.btn", f), async () => {
