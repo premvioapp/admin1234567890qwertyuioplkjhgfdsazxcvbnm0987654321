@@ -1174,6 +1174,23 @@ function bindRange(root, r, onChange) {
 }
 function fmtDay(s) { return new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
 
+// Method button link: "@premvio", "premvio", "t.me/premvio" or a full https link → a link that opens.
+// Telegram usernames open the Telegram app (https://t.me/…). Returns "" if it can't be used.
+function pvLink(v) {
+  v = String(v || "").trim();
+  if (!v) return "";
+  if (/^@?[A-Za-z][A-Za-z0-9_]{3,31}$/.test(v)) return "https://t.me/" + v.replace(/^@/, "");
+  if (/^tg:\/\//i.test(v)) return v;
+  if (/^(t|telegram)\.me\//i.test(v)) return "https://" + v;
+  if (!/^https?:\/\//i.test(v) && /^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(v)) return "https://" + v;
+  return /^https?:\/\//i.test(v) ? v : "";
+}
+function pvLinkBtn(m, cls = "btn sm deposit") {
+  const href = pvLink(m.link);
+  if (!href) return "";
+  const tg = /^(https:\/\/(t|telegram)\.me\/|tg:)/i.test(href);
+  return `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${ICONS.send} ${tg ? "Open in Telegram" : "Open " + esc(m.name)}</a>`;
+}
 function copyText(t) {
   navigator.clipboard?.writeText(t).then(() => toast("Copied: " + t, "success"), () => toast(t));
 }
@@ -2836,7 +2853,9 @@ function methodForm(m, agentsList) {
     <label>Name</label><input name="mname" required maxlength="40" value="${esc(m.name || "")}" placeholder="${dep ? "e.g. eSewa, Khalti, Bank, Telegram 2" : "e.g. eSewa, Bank transfer"}">
     <label>${forAgents ? "Payment details shown to the agent" : dep ? "Payment details shown to the customer" : "Instructions shown to the customer"}</label>
     <textarea name="details" maxlength="1000" placeholder="${dep ? "e.g. eSewa ID: 98XXXXXXXX (Premvio Pvt Ltd). Send the money, then upload the screenshot." : "e.g. We send the money to your eSewa within 1 hour."}">${esc(m.details || "")}</textarea>
-    ${builtin ? "" : `<label>Button link <span class="muted">(optional — e.g. https://t.me/premvio2)</span></label><input name="link" maxlength="300" value="${esc(m.link || "")}" placeholder="https://…">`}
+    ${builtin ? "" : `<label>Button link <span class="muted">(optional — a Telegram username like <b>@premvio</b>, or any https:// link)</span></label>
+      <input name="link" maxlength="300" value="${esc(m.link || "")}" placeholder="@premvio or https://…">
+      <p class="small muted" id="linkHint"></p>`}
     ${forAgents ? "" : `<div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
     <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>`}
     <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
@@ -2850,13 +2869,25 @@ function methodForm(m, agentsList) {
           <span class="grow">${esc(a.full_name)}</span><span class="small muted">${esc(a.city || "")}${a.blocked ? " · blocked" : ""}</span></label>`).join("") || `<p class="small muted">No agents yet.</p>`}</div>
         <p class="small muted" id="agCount"></p></div>` : ""}
     <div class="setting-row"><b>Active (visible)</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${m.active !== false ? "checked" : ""}><span></span></label></div>
+    ${dep ? `<h3 class="mt">What they must send</h3>
+      ${forAgents ? "" : `<div class="setting-row"><div><b>Ask the amount</b><div class="small muted">Off = they don't type an amount. You type it when you approve.</div></div>
+        <label class="switch" style="margin:0"><input type="checkbox" name="ask_amount" ${m.ask_amount !== false ? "checked" : ""}><span></span></label></div>`}
+      <label>Payment screenshot</label>
+      <div class="seg"><label><input type="radio" name="proof_mode" value="required" ${(m.proof_mode || "required") === "required" ? "checked" : ""}> Must send</label>
+        <label><input type="radio" name="proof_mode" value="optional" ${m.proof_mode === "optional" ? "checked" : ""}> Optional</label>
+        <label><input type="radio" name="proof_mode" value="off" ${m.proof_mode === "off" ? "checked" : ""}> Don't ask</label></div>` : ""}
     ${builtin ? `<p class="small muted mt">PremvioCash uses the agent system (city, street and a 24-hour code), so it has no extra fields.</p>` : `
     <h3 class="mt">Fields they fill in</h3>
-    <p class="small muted">${forAgents ? "A payment screenshot is always asked (agents don't type an amount — you enter it when approving). Add e.g. “Sender number”." : dep ? "Amount and a payment screenshot are always asked. Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
+    <p class="small muted">${dep ? "Only the fields you add here are shown (plus the amount / screenshot if switched on above). Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
     <div id="mfields"></div><button type="button" class="btn soft block mt" id="addMF">${ICONS.plus} Add field</button>`}
     <button class="btn block mt" id="saveM">Save method</button></form>`, (md) => {
     const f = $("#mf2", md);
-    const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No extra fields — only amount + screenshot." : "No extra fields — only the amount.");
+    const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No fields added." : "No extra fields — only the amount.");
+    if (f.link) {
+      const hint = () => { const v = f.link.value.trim(), h = pvLink(v);
+        $("#linkHint", md).innerHTML = !v ? "" : h ? `Button opens: <a href="${esc(h)}" target="_blank" rel="noopener">${esc(h)}</a>` : `<span style="color:var(--red)">This is not a link or Telegram username.</span>`; };
+      f.link.oninput = hint; hint();
+    }
     if (fb) $("#addMF", md).onclick = fb.add;
     if (forAgents) {
       const pick = $("#agPick", md), count = () => ($("#agCount", md).textContent = $$(".ag-row input:checked", md).length + " agent(s) chosen");
@@ -2876,14 +2907,17 @@ function methodForm(m, agentsList) {
         if (!agent_ids.length) return toast("Choose at least one agent, or pick “All agents”.", "error");
       }
       if (mn != null && mx != null && mn > mx) return toast("Minimum can't be more than maximum.", "error");
-      const link = f.link ? f.link.value.trim() : m.link || null;
-      if (link && !/^https?:\/\//i.test(link)) return toast("The link must start with https://", "error");
+      const link = f.link ? pvLink(f.link.value) : m.link || null;
+      if (f.link && f.link.value.trim() && !link) return toast("Button link: type a Telegram username like @premvio, or a link starting with https://", "error");
       busy($("#saveM", md), async () => {
         let logo_url = m.logo_url || null;
         if (f.logo.files[0]) logo_url = await uploadImage(f.logo.files[0], "methods");
         const row = { kind: m.kind, name: f.mname.value.trim(), details: f.details.value.trim(), link: link || null, logo_url,
           min_amount: mn, max_amount: mx, sort: Number(f.sort.value) || 0, active: f.active.checked, fields: flds };
-        if (dep) { row.audience = forAgents ? "agents" : "customers"; row.agent_ids = forAgents ? agent_ids : null; }
+        if (dep) {
+          row.audience = forAgents ? "agents" : "customers"; row.agent_ids = forAgents ? agent_ids : null;
+          row.proof_mode = f.proof_mode.value; row.ask_amount = forAgents ? false : f.ask_amount.checked;
+        }
         const { error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id) : await sb.from("payment_methods").insert(row);
         if (error) throw error;
         closeModal(); toast("Method saved.", "success"); route();
@@ -2910,7 +2944,7 @@ async function deposits(v, depRole = "customer") {
   v.innerHTML = (depRole === "agent"
       ? `<p class="muted small">Agents paid you from the <b>Agent Deposit Portal</b> (agent-deposit.html) and uploaded a screenshot. They don't type an amount —
         check the screenshot and your account, then press Approve and <b>type the amount you received</b>. It goes straight to that agent's balance.</p>`
-      : `<p class="muted small">Customers paid with one of your deposit methods and uploaded a screenshot. Check the screenshot and your account, then approve to add the money to their balance.
+      : `<p class="muted small">Customers paid with one of your deposit methods. Check the screenshot (if sent) and your account, then approve to add the money to their balance. If the method doesn't ask the amount, you type it when approving.
         Agent deposits are on the <a href="#agentdeposits">Agent deposits</a> page.</p>`) +
     chips([["pending", "Waiting"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]], AD.depFilter, "df") +
     table(["#", depRole === "agent" ? "Agent" : "Customer", "Method", "Amount", "Details", "Sent", "Screenshot", "Status", ""], data.map((d) => `<tr>
@@ -2930,21 +2964,21 @@ async function deposits(v, depRole = "customer") {
   $$("[data-dok]", v).forEach((b) => (b.onclick = async () => {
     const d = data.find((x) => x.id == b.dataset.dok);
     const url = d.proof_path ? await viewProof(d.proof_path) : null;
-    const ag = isAgent(d);
+    const ag = isAgent(d), needAmt = ag || d.amount == null;
     openModal(`<h2>Approve ${ag ? "agent " : ""}deposit #${d.id}</h2>
-      <p>${ag ? "" : `<b>${money(d.amount)}</b> `}via <b>${esc(d.method_name)}</b> from ${esc(d.profiles?.full_name || "")} (${esc(d.profiles?.member_id || "")})${ag ? ` <span class="badge agent">agent</span>` : ""}</p>
+      <p>${needAmt ? "" : `<b>${money(d.amount)}</b> `}via <b>${esc(d.method_name)}</b> from ${esc(d.profiles?.full_name || "")} (${esc(d.profiles?.member_id || "")})${ag ? ` <span class="badge agent">agent</span>` : ""}</p>
       ${formView(d.form_data)}
       ${url ? `<img src="${esc(url)}" alt="Screenshot" style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;background:#000;margin-top:10px">` : ""}
-      ${ag ? `<label>Amount you received (${CFG.CURRENCY})</label><input type="number" id="dokAmt" min="1" step="0.01" inputmode="decimal" required placeholder="e.g. 5000">
-      <p class="small muted">This amount is added to agent ${esc(d.profiles?.member_id || "")}'s balance.</p>` : ""}
+      ${needAmt ? `<label>Amount you received (${CFG.CURRENCY})</label><input type="number" id="dokAmt" min="1" step="0.01" inputmode="decimal" required placeholder="e.g. 5000">
+      <p class="small muted">This amount is added to ${ag ? "agent" : "customer"} ${esc(d.profiles?.member_id || "")}'s balance.</p>` : ""}
       <p class="small muted mt">Only approve after you see the money in your account.</p>
-      <button class="btn success block mt" id="dokBtn">${ag ? "Approve — add to agent balance" : `Approve — add ${money(d.amount)}`}</button>`, (m) => {
-      if (ag) $("#dokAmt", m).oninput = (e) => { const n = Number(e.target.value); $("#dokBtn", m).textContent = n > 0 ? `Approve — add ${money(n)} to ${d.profiles?.member_id || "agent"}` : "Approve — add to agent balance"; };
+      <button class="btn success block mt" id="dokBtn">${needAmt ? "Approve — add to balance" : `Approve — add ${money(d.amount)}`}</button>`, (m) => {
+      if (needAmt) $("#dokAmt", m).oninput = (e) => { const n = Number(e.target.value); $("#dokBtn", m).textContent = n > 0 ? `Approve — add ${money(n)} to ${d.profiles?.member_id || "balance"}` : "Approve — add to balance"; };
       $("#dokBtn", m).onclick = () => {
-        const amt = ag ? Number($("#dokAmt", m).value) : null;
-        if (ag && !(amt > 0)) return toast("Enter the amount you received.", "error");
+        const amt = needAmt ? Number($("#dokAmt", m).value) : null;
+        if (needAmt && !(amt > 0)) return toast("Enter the amount you received.", "error");
         busy($("#dokBtn", m), async () => {
-        const { error: e } = await sb.rpc("admin_review_deposit", ag ? { p_id: d.id, p_approve: true, p_note: null, p_amount: amt } : { p_id: d.id, p_approve: true, p_note: null });
+        const { error: e } = await sb.rpc("admin_review_deposit", needAmt ? { p_id: d.id, p_approve: true, p_note: null, p_amount: amt } : { p_id: d.id, p_approve: true, p_note: null });
         if (e) throw e;
         closeModal(); toast("Deposit approved — balance added.", "success"); refreshCounts(); route();
         });
