@@ -791,6 +791,24 @@ body.wa-mode .topbar, body.wa-mode .bottom-nav { display: none !important; }
 .comm-how summary { cursor: pointer; font-weight: 700; font-size: .85rem; color: var(--blue); }
 .comm-how ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.5; }
 
+/* ===== V34: product option buttons / tick boxes + free products ===== */
+.opt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 6px; }
+.opt-btn { position: relative; margin: 0; cursor: pointer; display: block; }
+.opt-btn input { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; border: 0; pointer-events: none; }
+.opt-btn span { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 54px; padding: 10px 8px;
+  border: 1.5px solid var(--line); border-radius: 12px; background: var(--bg-2); text-align: center; color: var(--text); transition: border-color .15s, background .15s; }
+.opt-btn span b { font-weight: 700; font-size: .92rem; line-height: 1.2; }
+.opt-btn span small { color: var(--gold); font-weight: 700; font-size: .78rem; }
+.opt-btn input:checked + span { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, var(--bg-2)); box-shadow: 0 0 0 1px var(--gold) inset; }
+.opt-btn.multi input:checked + span b::before { content: "✓ "; color: var(--gold); }
+.opt-btn input:focus-visible + span { outline: 2px solid var(--gold); outline-offset: 2px; }
+.free-price { color: var(--green) !important; letter-spacing: .03em; }
+.sale-badge.free-badge { background: var(--green); }
+.from-price { color: var(--muted); font-size: .72rem; font-weight: 600; }
+.opt-list { border-top: 1px dashed var(--line); padding-top: 8px; }
+.opt-edit { margin-top: 6px; gap: 6px; }
+.opt-edit input { padding: 9px 10px; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1492,8 +1510,8 @@ async function products(v) {
     ${table(["Photo", "Name", "Price", "Qty limits", "Form fields", "Status", "Pin", ""], data.map((p) => `<tr>
       <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}">` : `<div class="thumb"></div>`}</td>
       <td><b>${esc(p.name)}</b><div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
-      <td><b>${money(p.price)}</b></td><td class="small">${p.min_qty} – ${p.max_qty}</td>
-      <td class="small">${(p.fields || []).map((f) => esc(f.label) + (f.required ? "*" : "")).join(", ") || "—"}</td>
+      <td>${productPriceCell(p)}</td><td class="small">${p.min_qty} – ${p.max_qty}</td>
+      <td class="small">${productFieldsSummary(p.fields) || "—"}</td>
       <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span>
         ${p.out_of_stock ? `<div><span class="badge rejected">out of stock</span></div>` : ""}
         ${p.daily_limit != null ? `<div class="small muted">limit ${p.daily_limit}/day</div>` : ""}
@@ -1548,52 +1566,89 @@ function pinModal(p) {
   });
 }
 
+// Order form field types for PRODUCTS (V34: option buttons / tick boxes with their own price, phone, email, date)
+const PRODUCT_FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["phone", "Phone number"],
+  ["email", "Email"], ["date", "Date"], ["choice", "Option buttons (choose one)"], ["select", "Dropdown (choose one)"],
+  ["multi", "Tick boxes (choose many)"]];
+const OPTION_TYPES = ["choice", "select", "multi"];
+// Field types for payment methods (deposit / withdraw forms)
 const FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["select", "Dropdown (choose one)"]];
 function newFieldId() { return "f" + Math.random().toString(36).slice(2, 8); }
+// old dropdowns stored plain text options → {label, price}
+function normOptions(fd) {
+  if (!Array.isArray(fd.options)) return;
+  fd.options = fd.options.map((o) => (typeof o === "string" ? { label: o, price: 0 } : { label: String(o.label || ""), price: Number(o.price) || 0 }));
+}
+function productFieldsSummary(fields) {
+  return (fields || []).map((f) => esc(f.label) + (f.required ? "*" : "")
+    + (OPTION_TYPES.includes(f.type) && (f.options || []).length ? ` <span class="muted">(${(f.options || []).length} options)</span>` : "")).join(", ");
+}
+function productPriceCell(p) {
+  if (p.is_free) return `<span class="badge active">🎁 FREE</span><div class="small muted">${p.free_per_user ? `max ${p.free_per_user} per customer` : "no limit"}</div>`;
+  const priced = (p.fields || []).some((f) => OPTION_TYPES.includes(f.type) && (f.options || []).some((o) => Number(o?.price) > 0));
+  return `<b>${money(p.price)}</b>${priced ? `<div class="small muted">+ option prices</div>` : ""}`;
+}
 function productForm(p = {}) {
   let fields = JSON.parse(JSON.stringify(p.fields && p.fields.length ? p.fields
     : p.id ? [] : [{ id: newFieldId(), label: "Telegram username", type: "text", required: true, placeholder: "@username" }]));
+  fields.forEach(normOptions);
   openModal(`<h2>${p.id ? "Edit" : "Add"} product</h2><form id="pf">
     <label>Photo</label>
     <div class="row"><img id="prev" class="thumb ${p.image_url ? "" : "hidden"}" src="${esc(p.image_url || "")}" style="width:72px;height:72px">
     <input type="file" name="file" accept="image/*"></div>
     <label>Product name</label><input name="pname" required maxlength="100" value="${esc(p.name || "")}" placeholder="e.g. Telegram Stars">
-    <div class="grid-2"><div><label>Price per 1 (${CFG.CURRENCY})</label><input type="number" name="price" min="0" step="0.01" required value="${p.price ?? ""}"></div>
+    <div class="setting-row free-row"><div><b>🎁 Free product</b><div class="small muted">Customers get it for NPR 0 — shown with a “FREE” badge and a “Get it free” button</div></div>
+      <label class="switch" style="margin:0"><input type="checkbox" name="is_free" ${p.is_free ? "checked" : ""}><span></span></label></div>
+    <div id="freeBox" class="${p.is_free ? "" : "hidden"}">
+      <label>How many can one customer get for free? <span class="muted">(empty = no limit)</span></label>
+      <input type="number" name="free_per_user" min="1" step="1" value="${p.id ? (p.free_per_user ?? "") : 1}" placeholder="No limit">
+      <p class="small muted">Option prices and the sale price are ignored while the product is free.</p></div>
+    <div class="grid-2"><div id="priceWrap"><label>Price per 1 (${CFG.CURRENCY})</label><input type="number" name="price" min="0" step="0.01" value="${p.price ?? ""}"></div>
     <div><label>Display order (lower = first)</label><input type="number" name="sort" value="${p.sort ?? 0}"></div>
     <div><label>Minimum quantity</label><input type="number" name="min_qty" min="1" value="${p.min_qty ?? 1}"></div>
     <div><label>Maximum quantity</label><input type="number" name="max_qty" min="1" value="${p.max_qty ?? 1000}"></div></div>
+    <p class="small muted">💡 If the price depends on what the customer picks (e.g. 3 / 6 / 12 months), set the price to <b>0</b> and give each option its price below.</p>
     <label>Description</label><textarea name="description" maxlength="3000">${esc(p.description || "")}</textarea>
     <div class="setting-row"><b>Visible to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${p.active !== false ? "checked" : ""}><span></span></label></div>
     <div class="setting-row"><div><b>Out of stock</b><div class="small muted">Shown to customers but they can't buy it</div></div><label class="switch" style="margin:0"><input type="checkbox" name="oos" ${p.out_of_stock ? "checked" : ""}><span></span></label></div>
     <label>Daily limit <span class="muted">(optional — most units sold per day, all customers together)</span></label>
     <input type="number" name="daily_limit" min="0" step="1" value="${p.daily_limit ?? ""}" placeholder="No limit">
 
-    <h3 class="mt">⚡ Flash sale <span class="muted small">(optional)</span></h3>
-    <p class="small muted">Customers see the old price crossed out and a countdown. Leave the sale price empty for no sale.</p>
+    <div id="saleBox"><h3 class="mt">⚡ Flash sale <span class="muted small">(optional)</span></h3>
+    <p class="small muted">Customers see the old price crossed out and a countdown. Leave the sale price empty for no sale. Option prices are added on top.</p>
     <div class="grid-2"><div><label>Sale price (${CFG.CURRENCY})</label><input type="number" name="sale_price" min="0" step="0.01" value="${p.sale_price ?? ""}"></div>
       <div><label>Starts <span class="muted">(empty = now)</span></label><input type="datetime-local" name="sale_starts_at" value="${toLocalInput(p.sale_starts_at)}"></div></div>
-    <label>Ends <span class="muted">(shows a countdown)</span></label><input type="datetime-local" name="sale_ends_at" value="${toLocalInput(p.sale_ends_at)}">
+    <label>Ends <span class="muted">(shows a countdown)</span></label><input type="datetime-local" name="sale_ends_at" value="${toLocalInput(p.sale_ends_at)}"></div>
 
     <h3 class="mt">Order form for this product</h3>
-    <p class="small muted">Customers fill this in when they buy (quantity is always asked). Add, edit, reorder or remove fields.</p>
+    <p class="small muted">Customers fill this in when they buy (quantity is always asked). Questions (text, number, phone, email, date) or choices
+      (option buttons, dropdown, tick boxes). Each option can add its own price.</p>
     <div id="fields"></div>
-    <button type="button" class="btn soft block mt" id="addField">${ICONS.plus} Add field</button>
+    <div class="row mt" style="flex-wrap:wrap;gap:8px">
+      <button type="button" class="btn soft grow" id="addField">${ICONS.plus} Add field</button>
+      <button type="button" class="btn soft grow" id="addChoice">🔘 Add choice (options)</button>
+      <button type="button" class="btn soft grow" id="addMonths">📅 Add “How many months?”</button></div>
     <button class="btn block mt">Save product</button></form>`, (m) => {
     const f = $("#pf", m);
     const box = $("#fields", m);
+    const optRow = (o, j) => `<div class="opt-edit row" data-oi="${j}">
+        <input class="grow" data-o="label" value="${esc(o.label)}" placeholder="Option, e.g. 3 months" maxlength="100">
+        <input type="number" data-o="price" value="${o.price ? o.price : ""}" placeholder="+ price" min="0" step="0.01" style="width:110px" title="Extra price added for this option (${CFG.CURRENCY})">
+        <button type="button" class="btn sm ghost" data-rmopt title="Remove option">✕</button></div>`;
     const draw = () => {
       box.innerHTML = fields.length ? fields.map((fd, i) => `<div class="field-row" data-i="${i}">
-        <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="Field name, e.g. Telegram username" required>
-          <select data-k="type" style="width:auto">${FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="row mt">
-          ${fd.type === "select" ? `<input class="grow" data-k="options" value="${esc((fd.options || []).join(", "))}" placeholder="Options, separated by commas">`
-            : `<input class="grow" data-k="placeholder" value="${esc(fd.placeholder || "")}" placeholder="Hint shown inside the box (optional)">`}
-          <label class="row small" style="margin:0;white-space:nowrap;color:var(--text)"><input type="checkbox" data-k="required" ${fd.required ? "checked" : ""} style="width:auto"> Required</label>
-        </div>
-        <div class="row mt" style="justify-content:flex-end">
-          <button type="button" class="btn sm soft" data-mv="-1" ${i === 0 ? "disabled" : ""}>↑</button>
+        <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="${OPTION_TYPES.includes(fd.type) ? "Question, e.g. How many months?" : "Field name, e.g. Telegram username"}" required>
+          <select data-k="type" style="width:auto">${PRODUCT_FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        ${OPTION_TYPES.includes(fd.type) ? `<div class="opt-list mt">
+            <div class="row small muted" style="justify-content:space-between"><span>Options the customer can pick</span><span>Extra price (${CFG.CURRENCY})</span></div>
+            ${(fd.options || []).map(optRow).join("")}
+            <button type="button" class="btn sm soft mt" data-addopt>${ICONS.plus} Add option</button></div>`
+          : `<div class="row mt"><input class="grow" data-k="placeholder" value="${esc(fd.placeholder || "")}" placeholder="Hint shown inside the box (optional)"></div>`}
+        <div class="row mt" style="justify-content:space-between">
+          <label class="row small" style="margin:0;white-space:nowrap;color:var(--text)"><input type="checkbox" data-k="required" ${fd.required ? "checked" : ""} style="width:auto"> ${fd.type === "multi" ? "Must tick at least one" : "Required"}</label>
+          <div class="row" style="gap:6px"><button type="button" class="btn sm soft" data-mv="-1" ${i === 0 ? "disabled" : ""}>↑</button>
           <button type="button" class="btn sm soft" data-mv="1" ${i === fields.length - 1 ? "disabled" : ""}>↓</button>
-          <button type="button" class="btn sm danger" data-rm>Remove</button></div>
+          <button type="button" class="btn sm danger" data-rm>Remove</button></div></div>
       </div>`).join("") : `<p class="small muted">No extra fields — customers only choose a quantity.</p>`;
     };
     const sync = () => $$(".field-row", box).forEach((row) => {
@@ -1601,41 +1656,87 @@ function productForm(p = {}) {
       fd.label = $('[data-k="label"]', row).value.trim();
       fd.type = $('[data-k="type"]', row).value;
       fd.required = $('[data-k="required"]', row).checked;
-      const o = $('[data-k="options"]', row), ph = $('[data-k="placeholder"]', row);
-      if (o) fd.options = o.value.split(",").map((x) => x.trim()).filter(Boolean);
+      const ph = $('[data-k="placeholder"]', row);
       if (ph) fd.placeholder = ph.value.trim();
+      if ($(".opt-list", row)) fd.options = $$(".opt-edit", row).map((r) => ({ label: $('[data-o="label"]', r).value.trim(), price: $('[data-o="price"]', r).value }));
     });
-    box.onchange = (e) => { if (e.target.dataset.k === "type") { sync(); draw(); } };
-    box.onclick = (e) => {
-      const row = e.target.closest(".field-row"); if (!row) return;
-      const i = Number(row.dataset.i);
-      if (e.target.dataset.mv) { sync(); const j = i + Number(e.target.dataset.mv); [fields[i], fields[j]] = [fields[j], fields[i]]; draw(); }
-      if (e.target.hasAttribute("data-rm")) { sync(); fields.splice(i, 1); draw(); }
+    box.onchange = (e) => {
+      if (e.target.dataset.k !== "type") return;
+      sync();
+      const fd = fields[e.target.closest(".field-row").dataset.i];
+      if (OPTION_TYPES.includes(fd.type) && !(fd.options || []).length) fd.options = [{ label: "", price: "" }, { label: "", price: "" }];
+      draw();
     };
-    $("#addField", m).onclick = () => { sync(); fields.push({ id: newFieldId(), label: "", type: "text", required: true }); draw(); $$('[data-k="label"]', box).pop()?.focus(); };
+    box.onclick = (e) => {
+      const btn = e.target.closest("button"); if (!btn) return;
+      const row = btn.closest(".field-row"); if (!row) return;
+      const i = Number(row.dataset.i);
+      if (btn.dataset.mv) { sync(); const j = i + Number(btn.dataset.mv); [fields[i], fields[j]] = [fields[j], fields[i]]; draw(); }
+      else if (btn.hasAttribute("data-rm")) { sync(); fields.splice(i, 1); draw(); }
+      else if (btn.hasAttribute("data-addopt")) {
+        sync(); (fields[i].options = fields[i].options || []).push({ label: "", price: "" }); draw();
+        $$(`.field-row[data-i="${i}"] [data-o="label"]`, box).pop()?.focus();
+      } else if (btn.hasAttribute("data-rmopt")) {
+        sync(); fields[i].options.splice(Number(btn.closest(".opt-edit").dataset.oi), 1); draw();
+      }
+    };
+    const addF = (fd) => { sync(); fields.push(fd); draw(); $$('[data-k="label"]', box).pop()?.focus(); };
+    $("#addField", m).onclick = () => addF({ id: newFieldId(), label: "", type: "text", required: true });
+    $("#addChoice", m).onclick = () => addF({ id: newFieldId(), label: "", type: "choice", required: true, options: [{ label: "", price: "" }, { label: "", price: "" }] });
+    $("#addMonths", m).onclick = () => {
+      addF({ id: newFieldId(), label: "How many months?", type: "choice", required: true,
+        options: ["1 month", "3 months", "6 months", "12 months"].map((label) => ({ label, price: "" })) });
+      toast("Now type the price of each option.", "success");
+    };
     draw();
+    const freeUI = () => {
+      const on = f.is_free.checked;
+      $("#freeBox", m).classList.toggle("hidden", !on);
+      $("#saleBox", m).classList.toggle("hidden", on);
+      $("#priceWrap", m).style.opacity = on ? ".5" : "";
+    };
+    f.is_free.onchange = freeUI; freeUI();
     f.file.onchange = () => { const file = f.file.files[0]; if (file) { $("#prev", m).src = URL.createObjectURL(file); $("#prev", m).classList.remove("hidden"); } };
     f.onsubmit = (e) => {
       e.preventDefault();
       sync();
+      const isFree = f.is_free.checked;
       for (const fd of fields) {
         if (!fd.label) return toast("Every form field needs a name.", "error");
-        if (fd.type === "select" && !(fd.options || []).length) return toast(`Add options for "${fd.label}".`, "error");
-        if (fd.type !== "select") delete fd.options;
+        if (OPTION_TYPES.includes(fd.type)) {
+          fd.options = (fd.options || []).filter((o) => o.label);
+          if (!fd.options.length) return toast(`Add options for "${fd.label}".`, "error");
+          if (fd.options.length > 30) return toast(`"${fd.label}" can have at most 30 options.`, "error");
+          const seen = new Set();
+          for (const o of fd.options) {
+            if (o.label.includes(",") && fd.type === "multi") return toast(`Tick-box options can't contain a comma ("${o.label}").`, "error");
+            if (seen.has(o.label.toLowerCase())) return toast(`"${fd.label}" has the option "${o.label}" twice.`, "error");
+            seen.add(o.label.toLowerCase());
+            const pr = o.price === "" || o.price == null ? 0 : Number(o.price);
+            if (!(pr >= 0)) return toast(`Price of "${o.label}" must be 0 or more.`, "error");
+            o.price = Math.round(pr * 100) / 100;
+          }
+          delete fd.placeholder;
+        } else delete fd.options;
       }
+      if (!isFree && f.price.value === "") return toast("Type the price (use 0 if the options carry the price).", "error");
+      const price = f.price.value === "" ? 0 : Number(f.price.value);
+      if (!(price >= 0)) return toast("Price must be 0 or more.", "error");
       const minq = Math.max(1, Math.floor(Number(f.min_qty.value) || 1)), maxq = Math.max(minq, Math.floor(Number(f.max_qty.value) || minq));
-      const salePrice = f.sale_price.value === "" ? null : Number(f.sale_price.value);
+      const salePrice = isFree || f.sale_price.value === "" ? null : Number(f.sale_price.value);
       const saleStart = f.sale_starts_at.value ? new Date(f.sale_starts_at.value).toISOString() : null;
       const saleEnd = f.sale_ends_at.value ? new Date(f.sale_ends_at.value).toISOString() : null;
-      if (salePrice != null && salePrice >= Number(f.price.value)) return toast("Sale price must be lower than the normal price.", "error");
-      if (saleStart && saleEnd && saleEnd <= saleStart) return toast("Sale end must be after the start.", "error");
+      if (salePrice != null && salePrice >= price) return toast("Sale price must be lower than the normal price.", "error");
+      if (salePrice != null && saleStart && saleEnd && saleEnd <= saleStart) return toast("Sale end must be after the start.", "error");
+      const fpu = f.free_per_user.value === "" ? null : Math.max(1, Math.floor(Number(f.free_per_user.value) || 1));
       busy($('button.btn:not([type="button"])', f), async () => {
         let image_url = p.image_url || null;
         if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "products");
-        const row = { name: f.pname.value.trim(), price: Number(f.price.value), sort: Number(f.sort.value) || 0,
+        const row = { name: f.pname.value.trim(), price, sort: Number(f.sort.value) || 0,
           description: f.description.value.trim(), active: f.active.checked, image_url, fields, min_qty: minq, max_qty: maxq,
           out_of_stock: f.oos.checked, daily_limit: f.daily_limit.value === "" ? null : Math.max(0, Math.floor(Number(f.daily_limit.value))),
-          sale_price: salePrice, sale_starts_at: salePrice == null ? null : saleStart, sale_ends_at: salePrice == null ? null : saleEnd };
+          sale_price: salePrice, sale_starts_at: salePrice == null ? null : saleStart, sale_ends_at: salePrice == null ? null : saleEnd,
+          is_free: isFree, free_per_user: isFree ? fpu : p.free_per_user ?? null };
         const { error } = p.id ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
         if (error) throw error;
         closeModal(); toast("Product saved.", "success"); route();
