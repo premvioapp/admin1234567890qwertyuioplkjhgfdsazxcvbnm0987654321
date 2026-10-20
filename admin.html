@@ -809,6 +809,15 @@ body.wa-mode .topbar, body.wa-mode .bottom-nav { display: none !important; }
 .opt-edit { margin-top: 6px; gap: 6px; }
 .opt-edit input { padding: 9px 10px; }
 
+/* ===== V34: keep the top clear of the phone's camera / clock (installed app) ===== */
+.topbar { padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+.desk-head { padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
+#toasts { top: calc(14px + env(safe-area-inset-top, 0px)); }
+.auth-wrap { padding-top: calc(24px + env(safe-area-inset-top, 0px)); }
+.pin-screen { padding-top: calc(20px + env(safe-area-inset-top, 0px)); }
+.modal { max-height: calc(92vh - env(safe-area-inset-top, 0px)); }
+.sidebar { padding-top: calc(18px + env(safe-area-inset-top, 0px)); }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
