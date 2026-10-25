@@ -849,6 +849,96 @@ button.tile-wide { width: 100%; font: inherit; color: var(--text); text-align: l
 .ao-card .ao-form .kv { padding: 3px 0; }
 .agent-tag { margin-top: 4px; color: var(--gold); }
 
+/* ===================== V41: new Home page ===================== */
+.push-card { margin-bottom: 12px; }
+.hello-card { position: relative; overflow: hidden; border-radius: 22px; padding: 18px 16px 14px; margin: 2px 0 14px; color: #fff;
+  background: radial-gradient(120% 140% at 100% 0%, #3d7bff 0%, rgba(61,123,255,0) 55%), linear-gradient(135deg, #1186f0 0%, #2a52e8 55%, #3b2fc9 100%);
+  box-shadow: 0 14px 34px rgba(37, 84, 230, .35); }
+.hello-card::after { content: ""; position: absolute; right: -40px; bottom: -60px; width: 190px; height: 190px; border-radius: 50%;
+  background: rgba(255,255,255,.07); pointer-events: none; }
+.hc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.hc-greet { font-size: .9rem; opacity: .92; font-weight: 600; }
+.hc-lbl { margin-top: 10px; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+.hc-bal { font-size: 1.75rem; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.hc-add { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; border-radius: 999px; text-decoration: none;
+  background: rgba(255,255,255,.18); color: #fff; font-weight: 700; font-size: .82rem; border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(6px); }
+.hc-add:active { transform: scale(.96); }
+.quick-row { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.16); }
+.q-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: #fff; min-width: 0; }
+.q-ic { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; font-size: 1.3rem; background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.2); transition: transform .15s; }
+.q-btn:active .q-ic { transform: scale(.9); }
+.q-lb { font-size: .72rem; font-weight: 600; opacity: .95; white-space: nowrap; }
+
+.banners { position: relative; margin: 0 0 14px; }
+.bn-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; border-radius: 18px; scrollbar-width: none; }
+.bn-track::-webkit-scrollbar { display: none; }
+.bn { position: relative; flex: 0 0 100%; scroll-snap-align: start; aspect-ratio: 2 / 1; border: 0; padding: 0; cursor: pointer; background: var(--card-2); overflow: hidden; }
+.bn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bn-title { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 14px 12px; text-align: left; color: #fff; font-weight: 800; font-size: 1rem;
+  background: linear-gradient(transparent, rgba(0,0,0,.7)); }
+.bn-dots { position: absolute; bottom: 8px; right: 12px; display: flex; gap: 5px; }
+.bn-dots i { width: 6px; height: 6px; border-radius: 99px; background: rgba(255,255,255,.5); transition: width .2s; }
+.bn-dots i.on { width: 16px; background: #fff; }
+
+.last-order { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 14px; border-radius: 16px; text-decoration: none; color: var(--text);
+  background: var(--card); border: 1px solid rgba(255, 200, 61, .35); }
+.last-order .lo-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255, 200, 61, .14); font-size: 1.2rem; }
+.last-order b { display: block; font-size: .9rem; }
+.last-order small { display: flex; align-items: center; gap: 6px; color: var(--gold); font-weight: 600; font-size: .78rem; margin-top: 2px; }
+.lo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: loPulse 1.4s infinite; }
+@keyframes loPulse { 50% { opacity: .3; } }
+.last-order em { font-style: normal; font-size: 1.4rem; color: var(--muted); }
+
+.cat-chips { display: flex; gap: 8px; overflow-x: auto; margin: 2px -16px 8px; padding: 2px 16px 6px; scrollbar-width: none; }
+.cat-chips::-webkit-scrollbar { display: none; }
+.cat-chip { flex: none; padding: 8px 15px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+  font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.cat-chip.on { background: var(--grad); border-color: transparent; color: #fff; box-shadow: 0 6px 16px rgba(47, 107, 255, .35); }
+
+.sec-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sec-row-head .sale-cd { font-size: .8rem; margin: 14px 0 8px; padding: 4px 10px; border-radius: 999px; background: rgba(255, 93, 108, .12); }
+.h-row { display: flex; gap: 10px; overflow-x: auto; margin: 0 -16px 6px; padding: 2px 16px 8px; scroll-snap-type: x proximity; scrollbar-width: none; }
+.h-row::-webkit-scrollbar { display: none; }
+.h-row .product { flex: 0 0 42%; max-width: 180px; scroll-snap-align: start; }
+
+/* product cards */
+.product { position: relative; border-radius: 18px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.product .ph { border-bottom: 1px solid var(--line); }
+.product .ph-ic { color: var(--gold); width: 44px; }
+.product .info { padding: 10px 12px 14px; padding-right: 44px; }
+.product.mini .info { padding: 8px 10px 12px; padding-right: 40px; }
+.product.mini .name { font-size: .84rem; }
+.add-btn { position: absolute; right: 10px; bottom: 12px; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--grad); color: #fff; font-weight: 800; font-size: 1.2rem; line-height: 1; box-shadow: 0 6px 14px rgba(47, 107, 255, .4); cursor: pointer; }
+.add-btn:active { transform: scale(.88); }
+.product.mini .add-btn { width: 26px; height: 26px; font-size: 1.05rem; right: 8px; bottom: 10px; }
+:root[data-theme="light"] .product { box-shadow: 0 4px 14px rgba(20, 40, 100, .08); }
+.hc-top > div:first-child { flex: 1; min-width: 0; }
+.hc-bal { white-space: nowrap; font-size: clamp(1.35rem, 7vw, 1.75rem); }
+.hc-add { padding: 7px 11px; font-size: .78rem; }
+.h-row { scroll-padding-inline: 16px; }
+.product.mini .prices { font-size: .8rem; }
+.product.mini .prices .price { white-space: nowrap; }
+.banner-admin { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.ba-item { padding: 10px; margin: 0; }
+.ba-item img { width: 100%; aspect-ratio: 2 / 1; object-fit: cover; border-radius: 12px; display: block; background: var(--card-2); }
+.ba-info { padding: 8px 4px 2px; }
+.banner-prev { width: 100%; aspect-ratio: 2 / 1; object-fit: cover; border-radius: 12px; margin-bottom: 8px; background: var(--card-2); }
+
+/* V41b: light quick buttons (no big blue card) */
+.quick-row { display: flex; justify-content: space-between; gap: 6px; margin: 4px 0 14px; padding: 12px 8px; border-radius: 18px;
+  background: var(--card); border: 1px solid var(--line); border-top: 1px solid var(--line); }
+.q-btn { color: var(--text); }
+.q-ic { width: 44px; height: 44px; border-radius: 14px; font-size: 1.25rem; border: 0; }
+.q-dep .q-ic { background: rgba(34, 201, 131, .14); }
+.q-wd .q-ic { background: rgba(255, 93, 108, .13); }
+.q-vo .q-ic { background: rgba(255, 159, 67, .14); }
+.q-in .q-ic { background: rgba(255, 200, 61, .14); }
+.q-he .q-ic { background: rgba(31, 162, 255, .14); }
+.q-lb { color: var(--muted); font-weight: 600; opacity: 1; }
+.quick-row { justify-content: space-around; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1310,6 +1400,7 @@ const SECTIONS = [
   { id: "orders", label: "Orders", icon: ICONS.bag, count: "pending_orders" },
   { id: "agentorders", label: "Agent orders", icon: ICONS.bag, count: "waiting_agent_pay" },
   { id: "products", label: "Products", icon: ICONS.star },
+  { id: "banners", label: "Home banners", icon: ICONS.grid },
   { id: "promos", label: "Promo codes", icon: ICONS.spark },
   { id: "vouchers", label: "Gift vouchers", icon: ICONS.cash },
   { id: "reviews", label: "Reviews", icon: ICONS.star },
@@ -1395,7 +1486,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, products, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, products, banners, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1422,6 +1513,11 @@ function agentPayBadge(o) {
   return `<span class="badge ${cls}">${txt}</span>`;
 }
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
+// admin's private note on a deposit/withdraw made from the admin panel (customers never see it)
+function txNote(t) {
+  const n = Array.isArray(t.transaction_notes) ? t.transaction_notes[0]?.note : t.transaction_notes?.note;
+  return n ? `<div class="muted">📝 ${esc(n)}</div>` : "";
+}
 const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher", commission: "Agent commission" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
@@ -1431,7 +1527,7 @@ function moneyModal(u, kind, after) {
     <p class="muted small">${esc(u.member_id)} · ${esc(u.role)} · current balance <b>${money(u.balance)}</b></p>
     <form id="mf">
       <label>Amount (${CFG.CURRENCY})</label><input type="number" name="amount" min="0.01" step="0.01" required inputmode="decimal">
-      <label>Note (shown in history)</label><input name="note" maxlength="120" placeholder="${dep ? "e.g. Cash received" : "e.g. Cash returned"}">
+      <label>Private note <span class="muted">(optional — only admins see it; the customer sees “Deposit successful”)</span></label><input name="note" maxlength="120" placeholder="${dep ? "e.g. Cash received" : "e.g. Cash returned"}">
       <button class="btn block mt ${dep ? "deposit" : "withdraw"}">${dep ? "Deposit" : "Withdraw"}</button>
     </form>`, (m) => {
     $("#mf", m).onsubmit = (e) => {
@@ -1441,7 +1537,7 @@ function moneyModal(u, kind, after) {
       if (!(a > 0)) return toast("Enter an amount.", "error");
       if (!dep && a > Number(u.balance)) return toast("That's more than their balance.", "error");
       busy($("button", f), async () => {
-        const note = f.note.value.trim() || (dep ? "Deposit by admin" : "Withdrawal by admin");
+        const note = f.note.value.trim() || null;
         const { data, error } = await sb.rpc("admin_adjust_balance", { p_user: u.id, p_amount: dep ? a : -a, p_note: note });
         if (error) throw error;
         closeModal();
@@ -1570,6 +1666,72 @@ async function orders(v) {
   bindOrderButtons(v, data);
 }
 
+/* ---------------- 🖼️ HOME BANNERS (slider on top of the customer Home page) ---------------- */
+async function banners(v) {
+  const [{ data, error }, { data: prods }] = await Promise.all([
+    sb.from("banners").select("*").order("sort").order("id"),
+    sb.from("products").select("id, name, active").order("sort")]);
+  if (error) throw error;
+  const pName = (id) => (prods || []).find((x) => x.id === id)?.name || "deleted product";
+  v.innerHTML = `<p class="muted small">Banners slide by themselves at the top of the customer Home page. Use wide pictures (about 2 : 1, e.g. 1200 × 600).
+      Tapping a banner can open a product or a link.</p>
+    <div class="toolbar"><button class="btn" id="addB">${ICONS.plus} Add banner</button></div>
+    <div class="banner-admin">${data.map((b) => `<div class="card ba-item">
+      <img src="${esc(b.image_url)}" alt="">
+      <div class="ba-info"><b>${esc(b.title || "No title")}</b>
+        <div class="small muted">${b.product_id ? "Opens: " + esc(pName(b.product_id)) : b.link ? "Opens: " + esc(b.link) : "No link"} · order ${b.sort}</div>
+        <div class="row mt" style="gap:6px;flex-wrap:wrap"><span class="badge ${b.active ? "active" : "cancelled"}">${b.active ? "visible" : "hidden"}</span>
+          <button class="btn sm soft" data-bed="${b.id}">Edit</button><button class="btn sm ghost" data-btg="${b.id}">${b.active ? "Hide" : "Show"}</button>
+          <button class="btn sm ghost" data-bdel="${b.id}">Delete</button></div></div></div>`).join("") || `<div class="card empty">No banners yet — add your first one.</div>`}</div>`;
+  const form = (b = {}) => openModal(`<h2>${b.id ? "Edit" : "Add"} banner</h2><form id="bf">
+      <label>Picture ${b.id ? `<span class="muted">(choose only to change it)</span>` : ""}</label>
+      <img id="bprev" class="banner-prev ${b.image_url ? "" : "hidden"}" src="${esc(b.image_url || "")}" alt="">
+      <input type="file" name="file" accept="image/*" ${b.id ? "" : "required"}>
+      <label>Title <span class="muted">(optional — written on the banner)</span></label><input name="title" maxlength="60" value="${esc(b.title || "")}" placeholder="e.g. Telegram Premium — best price">
+      <label>When tapped</label>
+      <select name="go"><option value="">Nothing</option><option value="product" ${b.product_id ? "selected" : ""}>Open a product</option><option value="link" ${!b.product_id && b.link ? "selected" : ""}>Open a link / Telegram</option></select>
+      <div id="goP" class="hidden"><label>Product</label><select name="product">${(prods || []).map((x) => `<option value="${x.id}" ${b.product_id === x.id ? "selected" : ""}>${esc(x.name)}${x.active ? "" : " (hidden)"}</option>`).join("")}</select></div>
+      <div id="goL" class="hidden"><label>Link</label><input name="link" maxlength="300" value="${esc(b.link || "")}" placeholder="@premvio or https://…"></div>
+      <div class="grid-2"><div><label>Order (lower = first)</label><input type="number" name="sort" value="${b.sort ?? 0}"></div>
+        <div class="setting-row" style="margin-top:28px"><b>Visible</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${b.active !== false ? "checked" : ""}><span></span></label></div></div>
+      <button class="btn block mt">Save banner</button></form>`, (m) => {
+    const f = $("#bf", m);
+    const sw = () => { $("#goP", m).classList.toggle("hidden", f.go.value !== "product"); $("#goL", m).classList.toggle("hidden", f.go.value !== "link"); };
+    f.go.onchange = sw; sw();
+    f.file.onchange = () => { const fl = f.file.files[0]; if (fl) { $("#bprev", m).src = URL.createObjectURL(fl); $("#bprev", m).classList.remove("hidden"); } };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      const link = f.go.value === "link" ? pvLink(f.link.value) : null;
+      if (f.go.value === "link" && !link) return toast("Type a link starting with https:// or a Telegram username like @premvio.", "error");
+      if (f.go.value === "product" && !f.product.value) return toast("Choose a product.", "error");
+      busy($('button.btn:not([type="button"])', f), async () => {
+        let image_url = b.image_url || null;
+        if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "banners");
+        if (!image_url) throw new Error("Choose a picture.");
+        const row = { image_url, title: f.title.value.trim() || null, product_id: f.go.value === "product" ? Number(f.product.value) : null,
+          link, sort: Number(f.sort.value) || 0, active: f.active.checked };
+        const { error: er } = b.id ? await sb.from("banners").update(row).eq("id", b.id) : await sb.from("banners").insert(row);
+        if (er) throw er;
+        closeModal(); toast("Banner saved.", "success"); route();
+      });
+    };
+  });
+  $("#addB").onclick = () => form();
+  $$("[data-bed]", v).forEach((x) => (x.onclick = () => form(data.find((b) => b.id == x.dataset.bed))));
+  $$("[data-btg]", v).forEach((x) => (x.onclick = async () => {
+    const b = data.find((y) => y.id == x.dataset.btg);
+    const { error: er } = await sb.from("banners").update({ active: !b.active }).eq("id", b.id);
+    if (er) return toast(errMsg(er), "error");
+    route();
+  }));
+  $$("[data-bdel]", v).forEach((x) => (x.onclick = async () => {
+    if (!(await confirmBox("Delete banner?", "It disappears from the customer Home page.", "Delete", true))) return;
+    const { error: er } = await sb.from("banners").delete().eq("id", x.dataset.bdel);
+    if (er) return toast(errMsg(er), "error");
+    toast("Deleted.", "success"); route();
+  }));
+}
+
 /* ---------------- 📦 AGENT ORDERS (products delivered by an agent) ---------------- */
 async function agentorders(v) {
   await agentCache();
@@ -1633,6 +1795,8 @@ async function products(v) {
   if (error) throw error;
   const pq = String(AD.prodQ || "").toLowerCase().split(/\s+/).filter(Boolean);
   const all = data;
+  AD.prodCats = [...new Set(all.map((p) => (p.category || "").trim()).filter(Boolean))].sort();
+  AD.prodList = all;
   data = data.filter((p) => { const t = (p.name + " " + (p.description || "")).toLowerCase(); return pq.every((w) => t.includes(w)); });
   const nPin = all.filter((p) => p.pinned).length;
   data.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
@@ -1644,7 +1808,7 @@ async function products(v) {
     ${pq.length ? `<p class="small muted">${data.length} of ${all.length} products</p>` : ""}
     ${table(["Photo", "Name", "Price", "Qty limits", "Form fields", "Status", "Pin", ""], data.map((p) => `<tr>
       <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}">` : `<div class="thumb"></div>`}</td>
-      <td><b>${esc(p.name)}</b><div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
+      <td><b>${esc(p.name)}</b>${p.category ? ` <span class="badge">${esc(p.category)}</span>` : ""}<div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
       <td>${productPriceCell(p)}</td><td class="small">${p.min_qty} – ${p.max_qty}</td>
       <td class="small">${productFieldsSummary(p.fields) || "—"}</td>
       <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span>
@@ -1733,6 +1897,9 @@ function productForm(p = {}) {
     <div class="row"><img id="prev" class="thumb ${p.image_url ? "" : "hidden"}" src="${esc(p.image_url || "")}" style="width:72px;height:72px">
     <input type="file" name="file" accept="image/*"></div>
     <label>Product name</label><input name="pname" required maxlength="100" value="${esc(p.name || "")}" placeholder="e.g. Telegram Stars">
+    <label>Category <span class="muted">(optional — shown as a button on the customer Home page)</span></label>
+    <input name="category" maxlength="30" list="catList" value="${esc(p.category || "")}" placeholder="e.g. Stars, Premium, Gifts">
+    <datalist id="catList">${(AD.prodCats || []).map((c) => `<option value="${esc(c)}">`).join("")}</datalist>
     <div class="setting-row free-row"><div><b>🎁 Free product</b><div class="small muted">Customers get it for NPR 0 — shown with a “FREE” badge and a “Get it free” button</div></div>
       <label class="switch" style="margin:0"><input type="checkbox" name="is_free" ${p.is_free ? "checked" : ""}><span></span></label></div>
     <div id="freeBox" class="${p.is_free ? "" : "hidden"}">
@@ -1882,7 +2049,7 @@ function productForm(p = {}) {
       busy($('button.btn:not([type="button"])', f), async () => {
         let image_url = p.image_url || null;
         if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "products");
-        const row = { name: f.pname.value.trim(), price, sort: Number(f.sort.value) || 0,
+        const row = { name: f.pname.value.trim(), category: f.category.value.trim() || null, price, sort: Number(f.sort.value) || 0,
           description: f.description.value.trim(), active: f.active.checked, image_url, fields, min_qty: minq, max_qty: maxq,
           out_of_stock: f.oos.checked, daily_limit: f.daily_limit.value === "" ? null : Math.max(0, Math.floor(Number(f.daily_limit.value))),
           sale_price: salePrice, sale_starts_at: salePrice == null ? null : saleStart, sale_ends_at: salePrice == null ? null : saleEnd,
@@ -2008,8 +2175,8 @@ const REPORTS = [
       .map((w) => ({ "#": w.id, Date: xd(w.created_at), "Member ID": w.cust?.member_id, Customer: w.cust?.full_name, "Amount (NPR)": Number(w.amount), City: w.city || "", Street: w.street || "",
         Status: w.status, "Paid by agent": w.agent ? `${w.agent.member_id} ${w.agent.full_name}` : "", "Paid at": xd(w.completed_at) })) },
   { id: "tx", icon: "📒", name: "All money movements", desc: "Every balance change (the full ledger)",
-    run: async (a, b) => (await fetchAll(() => sb.from("transactions").select("*, profiles(member_id, full_name, role)").gte("created_at", a).lt("created_at", b).order("created_at")))
-      .map((t) => ({ Date: xd(t.created_at), ID: t.profiles?.member_id, Name: t.profiles?.full_name, Role: t.profiles?.role, Type: TX_LABEL[t.type] || t.type, "Amount (NPR)": Number(t.amount), "Balance after": Number(t.balance_after), Description: t.description })) },
+    run: async (a, b) => (await fetchAll(() => sb.from("transactions").select("*, profiles(member_id, full_name, role), transaction_notes(note)").gte("created_at", a).lt("created_at", b).order("created_at")))
+      .map((t) => ({ Date: xd(t.created_at), ID: t.profiles?.member_id, Name: t.profiles?.full_name, Role: t.profiles?.role, Type: TX_LABEL[t.type] || t.type, "Amount (NPR)": Number(t.amount), "Balance after": Number(t.balance_after), Description: t.description, "Admin note": (Array.isArray(t.transaction_notes) ? t.transaction_notes[0]?.note : t.transaction_notes?.note) || "" })) },
   { id: "agents", icon: "🧑‍💼", name: "Agent summary", desc: "Per agent: top-ups, payouts, commission, deposits, balance",
     run: async (a, b) => {
       const [ags, tx] = await Promise.all([fetchAll(() => sb.from("profiles").select("id, member_id, full_name, city, street, balance").eq("role", "agent").order("member_id")),
@@ -2528,7 +2695,7 @@ async function personView(v, id, back) {
   const [from, to] = rangeISO(AD.pRange);
   const [{ data: u, error }, { data: tx }] = await Promise.all([
     sb.from("profiles").select("*").eq("id", id).single(),
-    sb.from("transactions").select("*, profiles(full_name, member_id)").or(`user_id.eq.${id},actor_id.eq.${id}`)
+    sb.from("transactions").select("*, profiles(full_name, member_id), transaction_notes(note)").or(`user_id.eq.${id},actor_id.eq.${id}`)
       .gte("created_at", from).lt("created_at", to).order("created_at", { ascending: false }).limit(2000),
   ]);
   if (error) throw error;
@@ -2565,7 +2732,7 @@ async function personView(v, id, back) {
     return `<tr><td class="small">${fmtDate(t.created_at)}</td>
       <td><span class="badge">${esc(mine ? TX_LABEL[t.type] || t.type : "Loaded " + (t.profiles?.member_id || "customer"))}</span></td>
       <td>${amt(Number(t.amount))}</td><td>${mine ? money(t.balance_after) : `<span class="muted small">customer's</span>`}</td>
-      <td class="small">${esc(t.description || "")}</td></tr>`;
+      <td class="small">${esc(t.description || "")}${txNote(t)}</td></tr>`;
   }), "No history yet")}`;
   const reload = () => personView(v, id, back);
   bindRange(v, AD.pRange, (nr) => { AD.pRange = nr; reload(); });
@@ -2714,7 +2881,7 @@ async function withdrawals(v) {
 async function transactions(v) {
   if (!AD.txRange) AD.txRange = defaultRange(30);
   const [from, to] = rangeISO(AD.txRange);
-  let q = sb.from("transactions").select("*, profiles(id, full_name, member_id, role)")
+  let q = sb.from("transactions").select("*, profiles(id, full_name, member_id, role), transaction_notes(note)")
     .gte("created_at", from).lt("created_at", to).order("created_at", { ascending: false }).limit(2000);
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
@@ -2731,7 +2898,7 @@ async function transactions(v) {
       <td class="small">${fmtDate(t.created_at)}</td>
       <td><a href="#${t.profiles?.role === "customer" ? "customers" : "agents"}/${t.user_id}">${who(t.profiles)}</a></td>
       <td><span class="badge">${esc(TX_LABEL[t.type] || t.type)}</span></td>
-      <td>${amt(Number(t.amount))}</td><td>${money(t.balance_after)}</td><td class="small">${esc(t.description || "")}</td></tr>`), "No transactions in these dates");
+      <td>${amt(Number(t.amount))}</td><td>${money(t.balance_after)}</td><td class="small">${esc(t.description || "")}${txNote(t)}</td></tr>`), "No transactions in these dates");
   $$("[data-tt]", v).forEach((c) => (c.onclick = () => { AD.txType = c.dataset.tt; route(); }));
   bindRange(v, AD.txRange, (nr) => { AD.txRange = nr; route(); });
 }
