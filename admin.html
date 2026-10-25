@@ -938,6 +938,15 @@ button.tile-wide { width: 100%; font: inherit; color: var(--text); text-align: l
 .q-he .q-ic { background: rgba(31, 162, 255, .14); }
 .q-lb { color: var(--muted); font-weight: 600; opacity: 1; }
 .quick-row { justify-content: space-around; }
+/* V42: agent delivery money summary */
+.ao-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.ao-sum:empty { display: none; }
+.ao-sum > div { padding: 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+.ao-sum span { display: block; font-size: .75rem; color: var(--muted); }
+.ao-sum b { font-size: 1.05rem; }
+.ao-sum .tue { border-color: rgba(255, 200, 61, .45); }
+.ao-sum .tue b { color: var(--gold); }
+.badge.tue { background: rgba(255, 200, 61, .15); color: var(--gold); }
 
 </style>
 <title>Premvio Admin</title>
@@ -1506,7 +1515,15 @@ async function agentCache(force) {
   return AD.agentList;
 }
 function agentName(id) { const a = (AD.agentMap || {})[id]; return a ? `${esc(a.member_id)} · ${esc(a.full_name)}` : "deleted agent"; }
-const AGENT_PAY_LABEL = { waiting: ["pending", "waiting for you"], approved: ["completed", "paid"], rejected: ["rejected", "not paid"] };
+const AGENT_PAY_LABEL = { waiting: ["pending", "waiting for you"], approved: ["tue", "approved · Tuesday"], paid: ["completed", "paid"], rejected: ["rejected", "not paid"] };
+// next Tuesday payout (10:00 Nepal time)
+function nextTuesday() {
+  const np = new Date(Date.now() + (5 * 60 + 45) * 60000), d = np.getUTCDay();
+  let add = (2 - d + 7) % 7;
+  if (add === 0 && np.getUTCHours() * 60 + np.getUTCMinutes() >= 10 * 60) add = 7;
+  const t = new Date(np.getTime() + add * 86400000);
+  return t.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
 function agentPayBadge(o) {
   if (!o.agent_pay_status) return "";
   const [cls, txt] = AGENT_PAY_LABEL[o.agent_pay_status] || ["", o.agent_pay_status];
@@ -1739,15 +1756,15 @@ async function agentorders(v) {
   let q = sb.from("orders").select("*, profiles(full_name, member_id)").not("agent_id", "is", null).order("created_at", { ascending: false }).limit(500);
   if (AD.aoF === "waiting") q = q.eq("agent_pay_status", "waiting");
   else if (AD.aoF === "todo") q = q.eq("status", "pending");
-  else if (AD.aoF === "approved" || AD.aoF === "rejected") q = q.eq("agent_pay_status", AD.aoF);
+  else if (["approved", "paid", "rejected"].includes(AD.aoF)) q = q.eq("agent_pay_status", AD.aoF);
   if (AD.aoAgent) q = q.eq("agent_id", AD.aoAgent);
   const { data, error } = await q;
   if (error) throw error;
   const sum = (k) => data.reduce((a, o) => a + Number(o[k] || 0), 0);
   v.innerHTML = `<p class="muted small">Orders for products you gave to an agent (Products → Edit → “Who delivers this product”).
       The customer's money was taken when they ordered. When the agent marks an order done it shows here as <b>waiting for you</b> —
-      check it, then <b>Approve</b> to add the agent's money to their balance.</p>
-    ${chips([["waiting", `Waiting for approval${AD.stats.waiting_agent_pay ? " (" + AD.stats.waiting_agent_pay + ")" : ""}`], ["todo", "Agent still delivering"], ["approved", "Paid"], ["rejected", "Not paid"], ["all", "All"]], AD.aoF, "aof")}
+      check it, then <b>Approve</b>. Approved money is added to the agents' balance automatically every <b>Tuesday 10:00 AM</b> (next: ${nextTuesday()}).</p>
+    ${chips([["waiting", `Waiting for approval${AD.stats.waiting_agent_pay ? " (" + AD.stats.waiting_agent_pay + ")" : ""}`], ["todo", "Agent still delivering"], ["approved", "Approved (Tuesday)"], ["paid", "Paid"], ["rejected", "Not paid"], ["all", "All"]], AD.aoF, "aof")}
     <div class="toolbar"><select id="aoAg" style="max-width:320px"><option value="">All agents</option>
       ${(AD.agentList || []).map((a) => `<option value="${a.id}" ${AD.aoAgent === a.id ? "selected" : ""}>${esc(a.member_id)} · ${esc(a.full_name)}</option>`).join("")}</select></div>
     <div class="stats"><div class="stat"><div class="k">Orders</div><div class="v">${data.length}</div></div>
@@ -1767,11 +1784,11 @@ async function agentorders(v) {
   $("#aoAg").onchange = (e) => { AD.aoAgent = e.target.value || null; route(); };
   $$("[data-apok]", v).forEach((b) => (b.onclick = async () => {
     const o = data.find((x) => x.id == b.dataset.apok);
-    if (!(await confirmBox(`Pay agent for order #${o.id}?`, `<b>${money(o.agent_pay)}</b> will be added to <b>${agentName(o.agent_id)}</b>'s balance.<br>
+    if (!(await confirmBox(`Approve agent payment for order #${o.id}?`, `<b>${money(o.agent_pay)}</b> will be added to <b>${agentName(o.agent_id)}</b>'s balance on <b>${nextTuesday()}</b> (10:00 AM).<br>
       <span class="small muted">${esc(o.product_name)} × ${o.quantity} · customer paid ${money(o.total)}</span>`, "Approve"))) return;
     const { error: e } = await sb.rpc("admin_review_agent_pay", { p_order: o.id, p_approve: true, p_note: null });
     if (e) return toast(errMsg(e), "error");
-    toast("Approved — money added to the agent.", "success"); refreshCounts(); route();
+    toast(`Approved — added to the agent on ${nextTuesday()}.`, "success"); refreshCounts(); route();
   }));
   $$("[data-apno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Don't pay agent for order #${b.dataset.apno}</h2><form id="apnf">
     <label>Reason (the agent sees it)</label><input name="note" required maxlength="200" placeholder="e.g. Customer says it was not delivered">
