@@ -818,6 +818,37 @@ body.wa-mode .topbar, body.wa-mode .bottom-nav { display: none !important; }
 .modal { max-height: calc(92vh - env(safe-area-inset-top, 0px)); }
 .sidebar { padding-top: calc(18px + env(safe-area-inset-top, 0px)); }
 
+/* ===== V37: clean Settings menu ===== */
+.set-profile { display: flex; align-items: center; gap: 14px; text-decoration: none; color: var(--text); }
+.set-profile .sp-av { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--gold), #ff9f1c); color: #1a1200; font-weight: 800; font-size: 1.15rem; }
+.set-profile b { display: block; font-size: 1.08rem; }
+.set-profile small { color: var(--muted); font-size: .85rem; }
+.set-profile em, .set-item em { font-style: normal; font-size: 1.4rem; color: var(--muted); line-height: 1; }
+.set-group { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 14px; overflow: hidden; }
+.set-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-decoration: none; color: var(--text); }
+.set-item + .set-item { border-top: 1px solid var(--line); }
+.set-item:active { background: var(--bg-2); }
+.set-item .si-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: var(--bg-2); font-size: 1.15rem; flex: 0 0 auto; }
+.set-item b { display: block; font-weight: 700; }
+.set-item small { display: block; color: var(--muted); font-size: .8rem; margin-top: 1px; }
+.set-item .si-val { font-weight: 700; color: var(--gold); font-size: .9rem; white-space: nowrap; }
+.set-item .badge { white-space: nowrap; }
+
+/* ===== V38: agent delivery orders ===== */
+button.tile-wide { width: 100%; font: inherit; color: var(--text); text-align: left; cursor: pointer; border: 1px solid var(--line); background: var(--card); }
+.tile-wide.ao-tile { margin: -6px 0 12px; }
+.tile-wide.ao-tile .ti { background: linear-gradient(135deg, var(--gold), #ff9f1c); font-size: 1.2rem; }
+.ao-count { background: var(--red); color: #fff !important; font-weight: 800; font-size: .8rem !important; min-width: 24px; height: 24px; padding: 0 7px;
+  border-radius: 999px; display: inline-grid; place-items: center; }
+.ao-count.hidden { display: none; }
+.seg-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); margin-bottom: 12px; }
+.seg-tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 700; padding: 10px; border-radius: 9px; cursor: pointer; }
+.seg-tabs button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 0 var(--line); }
+.ao-card .ao-form { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg-2); }
+.ao-card .ao-form .kv { padding: 3px 0; }
+.agent-tag { margin-top: 4px; color: var(--gold); }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1277,6 +1308,7 @@ async function mfaEnroll(p, next) {
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: ICONS.grid },
   { id: "orders", label: "Orders", icon: ICONS.bag, count: "pending_orders" },
+  { id: "agentorders", label: "Agent orders", icon: ICONS.bag, count: "waiting_agent_pay" },
   { id: "products", label: "Products", icon: ICONS.star },
   { id: "promos", label: "Promo codes", icon: ICONS.spark },
   { id: "vouchers", label: "Gift vouchers", icon: ICONS.cash },
@@ -1348,8 +1380,10 @@ async function refreshCounts() {
   const { data } = await sb.rpc("admin_stats");
   if (!data) return;
   const pend = (role) => sb.from("deposit_requests").select("id", { count: "exact", head: true }).eq("status", "pending").eq("requester_role", role);
-  const [c, a, tk] = await Promise.all([pend("customer"), pend("agent"),
-    sb.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open").eq("waiting_for", "admin")]);
+  const [c, a, tk, ap] = await Promise.all([pend("customer"), pend("agent"),
+    sb.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open").eq("waiting_for", "admin"),
+    sb.from("orders").select("id", { count: "exact", head: true }).eq("agent_pay_status", "waiting")]);
+  data.waiting_agent_pay = ap.error ? 0 : ap.count || 0;
   if (!c.error && !a.error) { data.pending_deposits = c.count || 0; data.pending_agent_deposits = a.count || 0; }
   data.open_tickets = tk.error ? 0 : tk.count || 0;
   AD.stats = data;
@@ -1361,7 +1395,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, products, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, products, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1372,6 +1406,21 @@ function chips(list, cur, attr) {
   return `<div class="chips">${list.map(([k, l]) => `<button class="chip ${cur === k ? "on" : ""}" data-${attr}="${k}">${l}</button>`).join("")}</div>`;
 }
 function who(p) { return p ? `${esc(p.full_name)}<div class="small muted mono">${esc(p.member_id)}</div>` : "—"; }
+// agents list (for "Delivered by agent" products and agent orders), cached
+async function agentCache(force) {
+  if (AD.agentList && !force) return AD.agentList;
+  const { data } = await sb.from("profiles").select("id, member_id, full_name, city, blocked").eq("role", "agent").order("member_id");
+  AD.agentList = data || [];
+  AD.agentMap = Object.fromEntries(AD.agentList.map((a) => [a.id, a]));
+  return AD.agentList;
+}
+function agentName(id) { const a = (AD.agentMap || {})[id]; return a ? `${esc(a.member_id)} · ${esc(a.full_name)}` : "deleted agent"; }
+const AGENT_PAY_LABEL = { waiting: ["pending", "waiting for you"], approved: ["completed", "paid"], rejected: ["rejected", "not paid"] };
+function agentPayBadge(o) {
+  if (!o.agent_pay_status) return "";
+  const [cls, txt] = AGENT_PAY_LABEL[o.agent_pay_status] || ["", o.agent_pay_status];
+  return `<span class="badge ${cls}">${txt}</span>`;
+}
 function amt(n) { return `<span class="${n >= 0 ? "amt-pos" : "amt-neg"}">${n >= 0 ? "+" : "−"}${money(Math.abs(n))}</span>`; }
 const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher", commission: "Agent commission" };
 
@@ -1410,6 +1459,7 @@ async function dashboard(v) {
   const [{ data: daily }, { data: recent }] = await Promise.all([
     sb.rpc("admin_daily", { p_days: 7 }),
     sb.from("orders").select("*, profiles(full_name, member_id)").eq("status", "pending").order("created_at", { ascending: false }).limit(8),
+    agentCache(),
   ]);
   const max = Math.max(1, ...(daily || []).map((d) => Number(d.sales)));
   v.innerHTML = `<div class="stats">
@@ -1435,6 +1485,7 @@ function formView(fd) {
 function orderTable(list) {
   return table(["#", "Customer", "Product", "Qty", "Total", "Customer's form", "Date", "Status", ""], list.map((o) => `<tr>
     <td>${o.id}</td><td>${who(o.profiles)}</td><td>${esc(o.product_name)}
+      ${o.agent_id ? `<div class="small agent-tag">📦 ${agentName(o.agent_id)} · gets ${money(o.agent_pay || 0)} ${agentPayBadge(o)}</div>` : ""}
       ${o.is_gift ? `<div class="gift-tag small">🎁 GIFT for ${esc(o.gift?.to_name || "")}${o.gift?.to_member ? " (" + esc(o.gift.to_member) + ")" : ""}</div>${o.gift?.message ? `<div class="small muted">“${esc(o.gift.message)}”</div>` : ""}` : ""}</td>
       <td>${o.quantity}</td><td><b>${money(o.total)}</b>${Number(o.discount) > 0 ? `<div class="small" style="color:var(--green)">🏷️ ${esc(o.promo_code || "")} −${money(o.discount)}</div>` : ""}${Number(o.points_used) > 0 ? `<div class="small" style="color:var(--green)">⭐ points −${money(o.points_used)}</div>` : ""}</td>
     <td>${formView(o.form_data)}</td>
@@ -1507,6 +1558,7 @@ function bindOrderButtons(v, list) {
   })));
 }
 async function orders(v) {
+  await agentCache();
   let q = sb.from("orders").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
   if (AD.orderFilter === "refunds") q = q.eq("refund_status", "requested");
   else if (AD.orderFilter !== "all") q = q.eq("status", AD.orderFilter);
@@ -1518,8 +1570,65 @@ async function orders(v) {
   bindOrderButtons(v, data);
 }
 
+/* ---------------- 📦 AGENT ORDERS (products delivered by an agent) ---------------- */
+async function agentorders(v) {
+  await agentCache();
+  if (!AD.aoF) AD.aoF = "waiting";
+  let q = sb.from("orders").select("*, profiles(full_name, member_id)").not("agent_id", "is", null).order("created_at", { ascending: false }).limit(500);
+  if (AD.aoF === "waiting") q = q.eq("agent_pay_status", "waiting");
+  else if (AD.aoF === "todo") q = q.eq("status", "pending");
+  else if (AD.aoF === "approved" || AD.aoF === "rejected") q = q.eq("agent_pay_status", AD.aoF);
+  if (AD.aoAgent) q = q.eq("agent_id", AD.aoAgent);
+  const { data, error } = await q;
+  if (error) throw error;
+  const sum = (k) => data.reduce((a, o) => a + Number(o[k] || 0), 0);
+  v.innerHTML = `<p class="muted small">Orders for products you gave to an agent (Products → Edit → “Who delivers this product”).
+      The customer's money was taken when they ordered. When the agent marks an order done it shows here as <b>waiting for you</b> —
+      check it, then <b>Approve</b> to add the agent's money to their balance.</p>
+    ${chips([["waiting", `Waiting for approval${AD.stats.waiting_agent_pay ? " (" + AD.stats.waiting_agent_pay + ")" : ""}`], ["todo", "Agent still delivering"], ["approved", "Paid"], ["rejected", "Not paid"], ["all", "All"]], AD.aoF, "aof")}
+    <div class="toolbar"><select id="aoAg" style="max-width:320px"><option value="">All agents</option>
+      ${(AD.agentList || []).map((a) => `<option value="${a.id}" ${AD.aoAgent === a.id ? "selected" : ""}>${esc(a.member_id)} · ${esc(a.full_name)}</option>`).join("")}</select></div>
+    <div class="stats"><div class="stat"><div class="k">Orders</div><div class="v">${data.length}</div></div>
+      <div class="stat"><div class="k">Customers paid</div><div class="v">${money(sum("total"))}</div></div>
+      <div class="stat"><div class="k">Agents get</div><div class="v">${money(sum("agent_pay"))}</div></div></div>
+    ${table(["#", "Date", "Product", "Customer", "Agent", "Customer paid", "Agent gets", "Status", ""], data.map((o) => `<tr>
+      <td>${o.id}</td><td class="small">${fmtDate(o.created_at)}${o.agent_done_at ? `<div class="muted">done ${fmtDate(o.agent_done_at)}</div>` : ""}</td>
+      <td><b>${esc(o.product_name)}</b> × ${o.quantity}<div class="small">${formView(o.form_data)}</div></td>
+      <td>${who(o.profiles)}</td><td class="small">${agentName(o.agent_id)}</td>
+      <td><b>${money(o.total)}</b></td><td><b style="color:var(--gold)">${money(o.agent_pay || 0)}</b></td>
+      <td><span class="badge ${o.status}">${o.status === "pending" ? "delivering" : o.status}</span> ${agentPayBadge(o)}
+        ${o.refund_status === "requested" ? `<div><span class="badge requested">refund requested</span></div>` : ""}
+        ${o.agent_pay_note ? `<div class="small muted">${esc(o.agent_pay_note)}</div>` : ""}</td>
+      <td style="white-space:nowrap">${o.agent_pay_status === "waiting" ? `<button class="btn sm success" data-apok="${o.id}">Approve</button><button class="btn sm ghost" data-apno="${o.id}">Reject</button>` : ""}</td>
+    </tr>`), AD.aoF === "waiting" ? "Nothing waiting for approval 🎉" : "No agent orders")}`;
+  $$("[data-aof]", v).forEach((c) => (c.onclick = () => { AD.aoF = c.dataset.aof; route(); }));
+  $("#aoAg").onchange = (e) => { AD.aoAgent = e.target.value || null; route(); };
+  $$("[data-apok]", v).forEach((b) => (b.onclick = async () => {
+    const o = data.find((x) => x.id == b.dataset.apok);
+    if (!(await confirmBox(`Pay agent for order #${o.id}?`, `<b>${money(o.agent_pay)}</b> will be added to <b>${agentName(o.agent_id)}</b>'s balance.<br>
+      <span class="small muted">${esc(o.product_name)} × ${o.quantity} · customer paid ${money(o.total)}</span>`, "Approve"))) return;
+    const { error: e } = await sb.rpc("admin_review_agent_pay", { p_order: o.id, p_approve: true, p_note: null });
+    if (e) return toast(errMsg(e), "error");
+    toast("Approved — money added to the agent.", "success"); refreshCounts(); route();
+  }));
+  $$("[data-apno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Don't pay agent for order #${b.dataset.apno}</h2><form id="apnf">
+    <label>Reason (the agent sees it)</label><input name="note" required maxlength="200" placeholder="e.g. Customer says it was not delivered">
+    <p class="small muted">The customer's order stays completed. If the customer should get their money back, refund the order on the Orders page.</p>
+    <button class="btn danger block mt">Don't pay</button></form>`, (m) => {
+    $("#apnf", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("admin_review_agent_pay", { p_order: Number(b.dataset.apno), p_approve: false, p_note: e.target.note.value.trim() });
+        if (er) throw er;
+        closeModal(); toast("Marked as not paid.", "success"); refreshCounts(); route();
+      });
+    };
+  })));
+}
+
 /* ---------------- PRODUCTS (with custom order form) ---------------- */
 async function products(v) {
+  await agentCache(true);
   let { data, error } = await sb.from("products").select("*").order("sort").order("created_at", { ascending: false });
   if (error) throw error;
   const pq = String(AD.prodQ || "").toLowerCase().split(/\s+/).filter(Boolean);
@@ -1541,6 +1650,7 @@ async function products(v) {
       <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span>
         ${p.out_of_stock ? `<div><span class="badge rejected">out of stock</span></div>` : ""}
         ${p.daily_limit != null ? `<div class="small muted">limit ${p.daily_limit}/day</div>` : ""}
+        ${p.agent_id ? `<div class="small agent-tag">📦 ${agentName(p.agent_id)}<br>agent gets ${money(p.agent_pay || 0)} / 1</div>` : ""}
         ${p.sale_price != null && (!p.sale_ends_at || new Date(p.sale_ends_at) > Date.now()) ? `<div><span class="badge pending">⚡ sale ${money(p.sale_price)}</span></div>${p.sale_ends_at ? `<div class="small muted">until ${fmtDate(p.sale_ends_at)}</div>` : ""}` : ""}</td>
       <td class="pin-col">${p.pinned
         ? `<span class="badge admin">📌 ${esc(p.pin_badge || "Recommended")}</span><div class="mt"><button class="btn sm soft" data-pin="${p.id}">Edit badge</button><button class="btn sm ghost" data-unpin="${p.id}">Unpin</button></div>`
@@ -1640,6 +1750,17 @@ function productForm(p = {}) {
     <label>Daily limit <span class="muted">(optional — most units sold per day, all customers together)</span></label>
     <input type="number" name="daily_limit" min="0" step="1" value="${p.daily_limit ?? ""}" placeholder="No limit">
 
+    <h3 class="mt">📦 Who delivers this product</h3>
+    <p class="small muted">Choose an agent and the orders go straight to that agent. The customer pays as usual. When the agent marks the order done,
+      the customer sees “Completed” and you approve the agent's money on the <b>Agent orders</b> page.</p>
+    <label>Delivered by</label>
+    <select name="agent_id"><option value="">Admin (me) — normal order</option>
+      ${(AD.agentList || []).map((a) => `<option value="${a.id}" ${p.agent_id === a.id ? "selected" : ""}>${esc(a.member_id)} · ${esc(a.full_name)}${a.city ? " · " + esc(a.city) : ""}${a.blocked ? " (blocked)" : ""}</option>`).join("")}
+      ${p.agent_id && !(AD.agentMap || {})[p.agent_id] ? `<option value="${p.agent_id}" selected>deleted agent</option>` : ""}</select>
+    <div id="agPayBox" class="${p.agent_id ? "" : "hidden"}"><label>Agent gets per 1 (${CFG.CURRENCY})</label>
+      <input type="number" name="agent_pay" min="0" step="0.01" value="${p.agent_pay ?? ""}" placeholder="e.g. 1400">
+      <p class="small muted">Example: quantity 2 → the agent gets 2 × this amount after you approve.</p></div>
+
     <div id="saleBox"><h3 class="mt">⚡ Flash sale <span class="muted small">(optional)</span></h3>
     <p class="small muted">Customers see the old price crossed out and a countdown. Leave the sale price empty for no sale. Option prices are added on top.</p>
     <div class="grid-2"><div><label>Sale price (${CFG.CURRENCY})</label><input type="number" name="sale_price" min="0" step="0.01" value="${p.sale_price ?? ""}"></div>
@@ -1722,6 +1843,7 @@ function productForm(p = {}) {
       $("#priceWrap", m).style.opacity = on ? ".5" : "";
     };
     f.is_free.onchange = freeUI; freeUI();
+    f.agent_id.onchange = () => $("#agPayBox", m).classList.toggle("hidden", !f.agent_id.value);
     f.file.onchange = () => { const file = f.file.files[0]; if (file) { $("#prev", m).src = URL.createObjectURL(file); $("#prev", m).classList.remove("hidden"); } };
     f.onsubmit = (e) => {
       e.preventDefault();
@@ -1755,6 +1877,8 @@ function productForm(p = {}) {
       if (salePrice != null && salePrice >= price) return toast("Sale price must be lower than the normal price.", "error");
       if (salePrice != null && saleStart && saleEnd && saleEnd <= saleStart) return toast("Sale end must be after the start.", "error");
       const fpu = f.free_per_user.value === "" ? null : Math.max(1, Math.floor(Number(f.free_per_user.value) || 1));
+      const agentId = f.agent_id.value || null;
+      if (agentId && (f.agent_pay.value === "" || !(Number(f.agent_pay.value) >= 0))) return toast("Type how much the agent gets per 1 (0 or more).", "error");
       busy($('button.btn:not([type="button"])', f), async () => {
         let image_url = p.image_url || null;
         if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "products");
@@ -1762,7 +1886,8 @@ function productForm(p = {}) {
           description: f.description.value.trim(), active: f.active.checked, image_url, fields, min_qty: minq, max_qty: maxq,
           out_of_stock: f.oos.checked, daily_limit: f.daily_limit.value === "" ? null : Math.max(0, Math.floor(Number(f.daily_limit.value))),
           sale_price: salePrice, sale_starts_at: salePrice == null ? null : saleStart, sale_ends_at: salePrice == null ? null : saleEnd,
-          is_free: isFree, free_per_user: isFree ? fpu : p.free_per_user ?? null };
+          is_free: isFree, free_per_user: isFree ? fpu : p.free_per_user ?? null,
+          agent_id: agentId, agent_pay: agentId ? Math.round(Number(f.agent_pay.value) * 100) / 100 : null };
         const { error } = p.id ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
         if (error) throw error;
         closeModal(); toast("Product saved.", "success"); route();
