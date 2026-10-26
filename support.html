@@ -1517,6 +1517,7 @@ function staffBubble(m, custName) {
 <script>
 /* ============ PREMVIO — Support panel ============
    Support staff only answer help chats: accept a waiting chat, reply, mark solved.
+   They see only chats waiting for Accept and chats they accepted themselves (admin sees all).
    They can see the customer's name, ID, balance, recent orders, deposits and withdrawals (read only). */
 const SP = { me: null, f: "waiting", ch: null, listCh: null };
 const root = $("#root");
@@ -1597,7 +1598,7 @@ async function refreshCount() {
 async function chats(v) {
   const { data, error } = await sb.rpc("support_chats", { p_filter: SP.f });
   if (error) throw error;
-  v.innerHTML = `<div class="chips">${[["waiting", "Waiting"], ["mine", "My chats"], ["open", "All open"], ["closed", "Solved"]]
+  v.innerHTML = `<div class="chips">${[["waiting", "Waiting"], ["mine", "My chats"], ["closed", "Solved by me"]]
       .map(([k, l]) => `<button class="chip ${SP.f === k ? "on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
     <div class="sp-list">${data.length ? data.map((t) => `<div class="card sp-item" data-open="${t.id}">
       <div class="row between" style="gap:8px"><div style="min-width:0"><b>${esc(t.full_name || "Customer")}</b> <span class="small muted mono">${esc(t.member_id)}</span></div>
@@ -1625,7 +1626,7 @@ async function chat(v, id) {
     sb.from("tickets").select("*").eq("id", id).single(),
     sb.from("ticket_messages").select("*").eq("ticket_id", id).order("created_at"),
     sb.rpc("support_ticket_info", { p_ticket: id })]);
-  if (error || e2) throw error || e2;
+  if (error || e2 || !t) { toast("This chat was accepted by someone else.", "error"); location.hash = "chats"; return; }
   const open = t.status === "open", accepted = !!t.accepted_at;
   const mineOrFree = t.accepted_by === SP.me.id;
   v.innerHTML = `<a class="back-link" href="#chats">← All chats</a>

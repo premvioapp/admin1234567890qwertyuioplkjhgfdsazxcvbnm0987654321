@@ -3078,7 +3078,7 @@ async function agentCommDetail(v, id) {
 const STAFF_ROLES = {
   agent: { label: "Agent", page: "agent.html", hint: "Tops up customers and pays out PremvioCash codes. Has a cash balance." },
   marketing: { label: "Marketing manager", page: "marketing.html", hint: "Sees sales numbers (no customer names or money), pins products, edits the moving message, sends push messages to customers and manages the New page. Cannot touch money, orders, KYC or staff." },
-  support: { label: "Support", page: "support.html", hint: "Answers help chats: accepts waiting chats, replies and marks them solved. Sees the customer's name, ID, balance, recent orders, deposits and withdrawals. Cannot change anything else." },
+  support: { label: "Support", page: "support.html", hint: "Answers help chats: accepts waiting chats, replies and marks them solved. Sees only waiting chats and the chats they accepted. Sees the customer's name, ID, balance, recent orders, deposits and withdrawals. Cannot change anything else." },
   admin: { label: "Admin", page: "admin.html", hint: "Full access to everything. Needs two-step login." },
 };
 function staffForm(u) {
