@@ -1016,6 +1016,28 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; d
   background: #2a1218; color: #ffd7dc; border: 1px solid rgba(255, 93, 108, .45); box-shadow: 0 8px 22px rgba(0,0,0,.35); white-space: nowrap; }
 .net-bar .nb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
 .net-bar { top: auto; bottom: calc(var(--nav-h) + 14px + env(safe-area-inset-bottom, 0px)); }
+/* notification ask popup */
+.push-ask-ic { width: 56px; height: 56px; margin: 4px auto 10px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
+.push-ask-ic svg { width: 28px; height: 28px; }
+/* V57 support panel + chat accept */
+.sp-ui { --grad: linear-gradient(135deg, #22c983 0%, #1fa2ff 100%); }
+.sp-tag { background: var(--grad); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: .08em; padding: 4px 10px; border-radius: 999px; }
+.badge.support { background: rgba(34, 201, 131, .15); color: var(--green); }
+.sp-list { display: grid; gap: 10px; }
+.sp-item { margin: 0; cursor: pointer; }
+.sp-item:hover { border-color: rgba(120, 160, 255, .35); }
+.sp-sub { margin-top: 4px; }
+.sp-last { margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-accept { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 14px; background: var(--card-2); border: 1px dashed var(--line); }
+.sp-bal { margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); display: flex; justify-content: space-between; }
+.sp-two h4 { margin: 16px 0 6px; font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.sp-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+.sp-row:last-child { border-bottom: 0; }
+.chat-sys { align-self: center; font-size: .75rem; color: var(--muted); background: var(--card-2); padding: 4px 10px; border-radius: 999px; }
+.bubble.me.auto { opacity: .75; }
+.bubble.me.auto .who, .bubble.me .who { color: rgba(255,255,255,.85); }
+.wa-sys { align-self: center; margin: 6px auto; font-size: .75rem; color: var(--muted); background: var(--card-2); padding: 4px 10px; border-radius: 999px; text-align: center; }
+@media (max-width: 860px) { .sp-two { grid-template-columns: 1fr; } }
 
 </style>
 <title>Premvio Admin</title>
@@ -1216,13 +1238,22 @@ async function enablePush(silent = false) {
     if (!silent) toast("Notifications are blocked. Allow them in your browser settings.", "error");
     return false;
   }
-  const reg = await navigator.serviceWorker.ready;
-  let sub = await reg.pushManager.getSubscription();
-  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(CFG.VAPID_PUBLIC_KEY) });
-  const j = sub.toJSON();
-  const { error } = await sb.rpc("save_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
-  if (error) { if (!silent) toast(errMsg(error), "error"); return false; }
-  return true;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const key = b64ToUint8(CFG.VAPID_PUBLIC_KEY);
+    let sub = await reg.pushManager.getSubscription();
+    let j = sub && sub.toJSON();
+    // broken or old device link → make a fresh one
+    if (sub && !(j && j.endpoint && j.keys && j.keys.p256dh && j.keys.auth)) { await sub.unsubscribe().catch(() => {}); sub = null; }
+    if (!sub) { sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); j = sub.toJSON(); }
+    // links THIS phone to the account that is logged in now (moves it away from any old account)
+    const { error } = await sb.rpc("save_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    if (!silent) toast(errMsg(e), "error");
+    return false;
+  }
 }
 async function disablePush() {
   if (!pushSupported()) return;
@@ -1475,6 +1506,13 @@ function copyText(t) {
   navigator.clipboard?.writeText(t).then(() => toast("Copied: " + t, "success"), () => toast(t));
 }
 
+/* ---------- help chat bubbles for staff (admin + support) ---------- */
+function staffBubble(m, custName) {
+  if (m.kind === "system") return `<div class="chat-sys">${esc(m.body)} · ${fmtDate(m.created_at)}</div>`;
+  return `<div class="bubble ${m.from_staff ? "me" : "them"} ${m.kind === "auto" ? "auto" : ""}">${m.from_staff ? (m.kind === "auto" ? `<div class="who">Auto reply</div>` : "")
+    : `<div class="who">${esc(custName || "Customer")}</div>`}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`;
+}
+
 </script>
 <script>
 /* ============ PREMVIO — Admin panel (v2) ============ */
@@ -1567,7 +1605,7 @@ const SECTIONS = [
   { id: "reviews", label: "Reviews", icon: ICONS.star },
   { id: "features", label: "New features", icon: ICONS.spark },
   { id: "customers", label: "Customers", icon: ICONS.users },
-  { id: "agents", label: "Staff (agents, admins, marketing)", icon: ICONS.shield },
+  { id: "agents", label: "Staff (agents, admins, marketing, support)", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
   { id: "deposits", label: "Deposit requests", icon: ICONS.cash, count: "pending_deposits" },
   { id: "agentdeposits", label: "Agent deposits", icon: ICONS.cash, count: "pending_agent_deposits" },
@@ -2464,11 +2502,11 @@ async function help(v) {
   else if (AD.hF === "closed") q = q.eq("status", "closed");
   const { data, error } = await q;
   if (error) throw error;
-  v.innerHTML = `<p class="muted small">Customers' questions from the app. Reply here — they get a notification. Mark a chat solved when it's done.</p>
+  v.innerHTML = `<p class="muted small">Support staff answer these at <b>support.html</b>. You can answer here too.</p>
     ${chips([["waiting", "Waiting for me"], ["open", "All open"], ["closed", "Solved"], ["all", "All"]], AD.hF, "hf")}
     ${table(["#", "Customer", "Topic", "Status", "Last update", ""], data.map((t) => `<tr>
       <td>${t.id}</td><td>${who(t.profiles)}</td><td><b>${esc(t.subject)}</b>${t.order_id ? `<div class="small muted">Order #${t.order_id}</div>` : ""}</td>
-      <td>${t.status === "closed" ? `<span class="badge completed">solved</span>` : t.waiting_for === "admin" ? `<span class="badge pending">needs reply</span>` : `<span class="badge agent">replied</span>`}</td>
+      <td>${t.status === "closed" ? `<span class="badge completed">solved</span>` : !t.accepted_at ? `<span class="badge pending">waiting to accept</span>` : t.waiting_for === "admin" ? `<span class="badge pending">needs reply</span>` : `<span class="badge agent">replied</span>`}</td>
       <td class="small">${fmtDate(t.updated_at)}</td><td><a class="btn sm" href="#help/${t.id}">Open</a></td></tr>`), "No chats here 🎉")}`;
   $$("[data-hf]", v).forEach((c) => (c.onclick = () => { AD.hF = c.dataset.hf; route(); }));
 }
@@ -2482,7 +2520,8 @@ async function helpThreadAdmin(v, id) {
       <div class="card"><div class="row between"><h2 style="margin:0">${esc(t.subject)} <span class="muted small">#${t.id}</span></h2>
           ${t.status === "open" ? `<button class="btn sm success" id="closeT">✅ Mark solved</button>` : `<span class="badge completed">solved</span>`}</div>
         <div class="chat admin-chat" id="chat"></div>
-        <form id="rf" class="chat-input" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write a reply…" required></textarea>
+        ${t.status === "open" && !t.accepted_at ? `<div class="sp-accept"><b>Waiting for support</b><button class="btn" id="accBtn">Accept chat</button></div>` : ""}
+        <form id="rf" class="chat-input ${t.status === "open" && !t.accepted_at ? "hidden" : ""}" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write a reply…" required></textarea>
           <button class="btn" aria-label="Send">${ICONS.send}</button></form>
         <div class="row mt" style="gap:6px;flex-wrap:wrap">${["Hi! We're checking this now 👍", "Your order has been delivered ✅", "Please send a screenshot of your payment.", "Sorry for the wait! It's done now."]
           .map((q) => `<button type="button" class="btn sm soft" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>
@@ -2495,12 +2534,17 @@ async function helpThreadAdmin(v, id) {
   const chat = $("#chat"), seen = new Set();
   const add = (m) => {
     if (seen.has(m.id)) return; seen.add(m.id);
-    chat.insertAdjacentHTML("beforeend", `<div class="bubble ${m.from_staff ? "me" : "them"}">${m.from_staff ? "" : `<div class="who">${esc(t.profiles?.full_name || "Customer")}</div>`}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`);
+    chat.insertAdjacentHTML("beforeend", staffBubble(m, t.profiles?.full_name));
     chat.scrollTop = chat.scrollHeight;
   };
   (msgs || []).forEach(add);
   if (AD.helpCh) sb.removeChannel(AD.helpCh);
   AD.helpCh = sb.channel("adm-help-" + id).on("postgres_changes", { event: "INSERT", schema: "public", table: "ticket_messages", filter: `ticket_id=eq.${id}` }, (x) => add(x.new)).subscribe();
+  if ($("#accBtn")) $("#accBtn").onclick = () => busy($("#accBtn"), async () => {
+    const { error: er } = await sb.rpc("accept_ticket", { p_ticket: id });
+    if (er) throw er;
+    refreshCounts(); route();
+  });
   const f = $("#rf");
   $$("[data-q]", v).forEach((b) => (b.onclick = () => { f.m.value = b.dataset.q; f.m.focus(); }));
   f.m.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) f.requestSubmit(); };
@@ -2510,7 +2554,7 @@ async function helpThreadAdmin(v, id) {
     busy($("button", f), async () => {
       const { data: mid, error: er } = await sb.rpc("send_ticket_message", { p_ticket: id, p_body: body });
       if (er) throw er;
-      f.m.value = ""; add({ id: mid, from_staff: true, body, created_at: new Date().toISOString() }); refreshCounts();
+      f.m.value = ""; add({ id: mid, from_staff: true, kind: "msg", body, created_at: new Date().toISOString() }); refreshCounts();
     });
   };
   if ($("#closeT")) $("#closeT").onclick = async () => {
@@ -2903,7 +2947,7 @@ async function customers(v) {
 /* ---------------- AGENTS & ADMINS ---------------- */
 async function agents(v) {
   if (hashArg()) return personView(v, hashArg(), "agents");
-  let q = sortQuery(sb.from("profiles").select("*").in("role", ["agent", "admin", "marketing"]), AD.staffSort || "new");
+  let q = sortQuery(sb.from("profiles").select("*").in("role", ["agent", "admin", "marketing", "support"]), AD.staffSort || "new");
   const term = AD.staffQ.trim().replace(/[%,()]/g, "");
   if (term) q = q.or(`member_id.ilike.%${term}%,full_name.ilike.%${term}%,city.ilike.%${term}%,phone.ilike.%${term}%`);
   const { data, error } = await q;
@@ -2911,16 +2955,16 @@ async function agents(v) {
   v.innerHTML = `${balanceSummary(data.filter((u) => u.role === "agent"), "Agents")}
     <form class="toolbar" id="ss"><input name="q" placeholder="Search ID, name, city, phone" value="${esc(AD.staffQ)}">
     ${sortSelect(AD.staffSort || "new")}<button class="btn soft">Search</button><button type="button" class="btn" id="addStaff">${ICONS.plus} Add staff</button></form>
-    <p class="small muted">Only you can create staff IDs. They log in with their ID and password (agents at <b>agent.html</b>, admins at <b>admin.html</b>, marketing managers at <b>marketing.html</b>).</p>
+    <p class="small muted">Only you can create staff IDs. They log in with their ID and password (agents at <b>agent.html</b>, admins at <b>admin.html</b>, marketing managers at <b>marketing.html</b>, support at <b>support.html</b>).</p>
     ${table(["ID / name", "Role", "Location", "Phone", "Balance", "Commission", "Status", ""], data.map((u) => `<tr>
       <td>${who(u)}</td><td><span class="badge ${u.role}">${u.role}</span></td>
       <td class="small">${esc([u.street, u.city, u.country].filter(Boolean).join(", ") || "—")}</td><td>${esc(u.phone || "—")}</td>
       <td><b>${money(u.balance)}</b></td>
       <td class="small">${u.role === "agent" ? (Number(u.commission_load) ? `${Number(u.commission_load)}% on sales` : `<span class="muted">none</span>`) + `<br><button class="btn sm soft" data-comm="${u.id}">Set</button>` : "—"}</td>
       <td><span class="badge ${u.blocked ? "blocked" : "active"}">${u.blocked ? "blocked" : "active"}</span></td>
-      <td style="white-space:nowrap">${u.role === "marketing" ? "" : `<button class="btn sm deposit" data-dep="${u.id}">Deposit</button>
+      <td style="white-space:nowrap">${u.role === "marketing" || u.role === "support" ? "" : `<button class="btn sm deposit" data-dep="${u.id}">Deposit</button>
         <button class="btn sm withdraw" data-wd="${u.id}">Withdraw</button>`}
-        <a class="btn sm soft" href="#agents/${u.id}">${u.role === "marketing" ? "Open" : "History"}</a></td></tr>`), "No staff yet — add one")}`;
+        <a class="btn sm soft" href="#agents/${u.id}">${u.role === "marketing" || u.role === "support" ? "Open" : "History"}</a></td></tr>`), "No staff yet — add one")}`;
   $("#ss").onsubmit = (e) => { e.preventDefault(); AD.staffQ = e.target.q.value; route(); };
   $("#ss").sort.onchange = (e) => { AD.staffSort = e.target.value; route(); };
   $("#addStaff").onclick = () => staffForm();
@@ -3034,12 +3078,13 @@ async function agentCommDetail(v, id) {
 const STAFF_ROLES = {
   agent: { label: "Agent", page: "agent.html", hint: "Tops up customers and pays out PremvioCash codes. Has a cash balance." },
   marketing: { label: "Marketing manager", page: "marketing.html", hint: "Sees sales numbers (no customer names or money), pins products, edits the moving message, sends push messages to customers and manages the New page. Cannot touch money, orders, KYC or staff." },
+  support: { label: "Support", page: "support.html", hint: "Answers help chats: accepts waiting chats, replies and marks them solved. Sees the customer's name, ID, balance, recent orders, deposits and withdrawals. Cannot change anything else." },
   admin: { label: "Admin", page: "admin.html", hint: "Full access to everything. Needs two-step login." },
 };
 function staffForm(u) {
   const edit = !!u;
   openModal(`<h2>${edit ? "Edit " + esc(u.member_id) : "Add staff"}</h2><form id="sf">
-    ${edit ? "" : `<label>Role</label><select name="srole"><option value="agent">Agent</option><option value="marketing">Marketing manager</option><option value="admin">Admin</option></select>
+    ${edit ? "" : `<label>Role</label><select name="srole"><option value="agent">Agent</option><option value="marketing">Marketing manager</option><option value="support">Support</option><option value="admin">Admin</option></select>
     <p class="small muted" id="roleHint"></p>
     <label>Login ID <span class="muted">(optional — leave empty for automatic)</span></label>
     <input name="login_id" maxlength="20" autocomplete="off" spellcheck="false" style="text-transform:uppercase" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{2,19}" title="3–20 letters or numbers, no spaces">`}
@@ -3347,6 +3392,7 @@ async function settings(v) {
     <div class="setting-row"><div><b>Gift vouchers</b><div class="small muted">Customers can buy vouchers for friends</div></div>${sw("voucher_on", s.voucher_on !== "false")}</div>
     <label>Voucher amounts customers can buy (${CFG.CURRENCY}, separated by commas)</label><input name="voucher_amounts" value="${esc(s.voucher_amounts || "100,500,1000,2000")}">
     <div class="setting-row mt"><div><b>Help chat</b><div class="small muted">Customers can chat with you inside the app</div></div>${sw("help_on", s.help_on !== "false")}</div>
+    <label>Automatic first reply in help chat (empty = none)</label><textarea name="help_auto_reply" maxlength="500">${esc(s.help_auto_reply ?? "Thank you for your message! Our support team will join this chat soon. Please stay here.")}</textarea>
     <p class="small muted mt">💰 Agent commission is set and paid on the <a href="#agentcomm">Agent commission</a> page.</p>
     <button class="btn block mt">Save rewards &amp; sales</button></form></div>
     <div class="card" style="max-width:620px"><h2>📢 Moving message</h2>
@@ -3374,7 +3420,7 @@ async function settings(v) {
       ["points_max_percent", String(Math.min(100, Math.max(1, Number(f.points_max_percent.value) || 50)))],
       ["cart_reminder_on", f.cart_reminder_on.checked ? "true" : "false"], ["cart_reminder_hours", String(Math.min(168, Math.max(1, Number(f.cart_reminder_hours.value) || 24)))],
       ["reviews_on", f.reviews_on.checked ? "true" : "false"], ["voucher_on", f.voucher_on.checked ? "true" : "false"],
-      ["help_on", f.help_on.checked ? "true" : "false"],
+      ["help_on", f.help_on.checked ? "true" : "false"], ["help_auto_reply", f.help_auto_reply.value.trim()],
       ["voucher_amounts", f.voucher_amounts.value.split(",").map((x) => Math.floor(Number(x.trim()))).filter((x) => x > 0).join(",") || "100,500,1000"]]
       .map(([key, value]) => ({ key, value }));
     busy($("button.btn", f), async () => {
