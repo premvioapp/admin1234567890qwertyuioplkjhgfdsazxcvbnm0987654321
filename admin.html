@@ -962,6 +962,16 @@ button.tile-wide { width: 100%; font: inherit; color: var(--text); text-align: l
 .ord-btns .btn.sm { padding: 6px 10px; font-size: .78rem; }
 .list-item:has(.ord-btns.full) { flex-wrap: wrap; }
 .ord-btns.full { flex-basis: 100%; padding-left: 52px; margin-top: 2px; }
+/* V47: Sell to Premvio */
+.sell-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.sell-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px; border-radius: 16px; text-align: left; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); color: var(--text); font: inherit; }
+.sell-card:disabled { opacity: .5; cursor: not-allowed; }
+.sell-card .sc-ph { width: 100%; aspect-ratio: 1; border-radius: 12px; background: var(--card-2); display: grid; place-items: center; font-size: 2rem; overflow: hidden; margin-bottom: 4px; }
+.sell-card .sc-ph img { width: 100%; height: 100%; object-fit: cover; }
+.sell-card b { font-size: .9rem; }
+.sell-card small { color: var(--muted); font-size: .78rem; }
+.sell-card small em { font-style: normal; color: var(--green); font-weight: 800; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1433,6 +1443,8 @@ const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: ICONS.grid },
   { id: "orders", label: "Orders", icon: ICONS.bag, count: "pending_orders" },
   { id: "agentorders", label: "Agent orders", icon: ICONS.bag, count: "waiting_agent_pay" },
+  { id: "sells", label: "Sell requests", icon: ICONS.cash, count: "pending_sells" },
+  { id: "sellitems", label: "We buy list", icon: ICONS.list },
   { id: "products", label: "Products", icon: ICONS.star },
   { id: "banners", label: "Home banners", icon: ICONS.grid },
   { id: "promos", label: "Promo codes", icon: ICONS.spark },
@@ -1510,6 +1522,8 @@ async function refreshCounts() {
     sb.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open").eq("waiting_for", "admin"),
     sb.from("orders").select("id", { count: "exact", head: true }).eq("agent_pay_status", "waiting")]);
   data.waiting_agent_pay = ap.error ? 0 : ap.count || 0;
+  const sr = await sb.from("sell_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
+  data.pending_sells = sr.error ? 0 : sr.count || 0;
   if (!c.error && !a.error) { data.pending_deposits = c.count || 0; data.pending_agent_deposits = a.count || 0; }
   data.open_tickets = tk.error ? 0 : tk.count || 0;
   AD.stats = data;
@@ -1521,7 +1535,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, products, banners, actionlog, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -1561,7 +1575,7 @@ function txNote(t) {
   const n = Array.isArray(t.transaction_notes) ? t.transaction_notes[0]?.note : t.transaction_notes?.note;
   return n ? `<div class="muted">📝 ${esc(n)}</div>` : "";
 }
-const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher", commission: "Agent commission" };
+const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher", commission: "Agent commission", agent_delivery: "Agent delivery pay", sell: "Bought from customer" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -1731,9 +1745,132 @@ async function orders(v) {
   bindOrderButtons(v, data);
 }
 
+/* ---------------- 💰 SELL TO PREMVIO: requests + "We buy" list ---------------- */
+async function sells(v) {
+  if (!AD.sellF) AD.sellF = "pending";
+  let q = sb.from("sell_requests").select("*, profiles(full_name, member_id)").order("created_at", { ascending: false }).limit(300);
+  if (AD.sellF !== "all") q = q.eq("status", AD.sellF);
+  const { data, error } = await q;
+  if (error) throw error;
+  const paid = data.filter((r) => r.status === "approved").reduce((a, r) => a + Number(r.paid_amount || 0), 0);
+  v.innerHTML = `<p class="muted small">Customers who want to sell you something from your <a href="#sellitems">We buy list</a>. Check it (e.g. that the code works),
+      then <b>Approve</b> — the money goes to their Premvio balance. You can pay less if only part of it is good.</p>
+    ${chips([["pending", "Waiting"], ["approved", "Bought"], ["rejected", "Not accepted"], ["all", "All"]], AD.sellF, "sf")}
+    ${AD.sellF === "approved" || AD.sellF === "all" ? `<div class="stats"><div class="stat"><div class="k">Paid to customers (shown)</div><div class="v">${money(paid)}</div></div></div>` : ""}
+    ${table(["#", "Customer", "Item", "Details", "Screenshot", "Asked", "Status", ""], data.map((r) => `<tr>
+      <td>${r.id}</td><td>${who(r.profiles)}</td><td><b>${esc(r.item_name)}</b> × ${r.quantity}<div class="small muted">${fmtDate(r.created_at)}</div></td>
+      <td>${formView(r.form_data)}</td>
+      <td>${r.proof_path ? `<button class="btn sm soft" data-sproof="${esc(r.proof_path)}">🧾 View</button>` : "—"}</td>
+      <td><b>${money(r.amount)}</b>${r.status === "approved" && Number(r.paid_amount) !== Number(r.amount) ? `<div class="small">paid ${money(r.paid_amount)}</div>` : ""}</td>
+      <td><span class="badge ${r.status === "approved" ? "completed" : r.status}">${r.status === "approved" ? "bought" : r.status}</span>${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}</td>
+      <td style="white-space:nowrap">${r.status === "pending" ? `<button class="btn sm success" data-sok="${r.id}">Approve</button><button class="btn sm ghost" data-sno="${r.id}">Reject</button>` : ""}</td>
+    </tr>`), AD.sellF === "pending" ? "No sell requests waiting" : "Nothing here")}`;
+  $$("[data-sf]", v).forEach((c) => (c.onclick = () => { AD.sellF = c.dataset.sf; route(); }));
+  $$("[data-sproof]", v).forEach((b) => (b.onclick = async () => {
+    const url = await viewProof(b.dataset.sproof); if (!url) return;
+    openModal(`<h2>Screenshot</h2><img src="${esc(url)}" alt="" style="width:100%;border-radius:12px;background:#000">`);
+  }));
+  $$("[data-sok]", v).forEach((b) => (b.onclick = () => {
+    const r = data.find((x) => x.id == b.dataset.sok);
+    openModal(`<h2>Buy #${r.id}: ${esc(r.item_name)} × ${r.quantity}</h2>
+      <p>From ${esc(r.profiles?.full_name || "")} (${esc(r.profiles?.member_id || "")})</p>${formView(r.form_data)}
+      <form id="sokf"><label>Amount to pay (${CFG.CURRENCY})</label><input type="number" name="amt" min="0.01" step="0.01" value="${r.amount}" required>
+        <label>Note to customer <span class="muted">(optional)</span></label><input name="note" maxlength="200">
+        <p class="small muted">Only approve after you checked it works. The amount is added to their balance right away.</p>
+        <button class="btn success block mt">Approve & pay</button></form>`, (m) => {
+      $("#sokf", m).onsubmit = (e) => {
+        e.preventDefault();
+        const amt = Number(e.target.amt.value);
+        if (!(amt > 0)) return toast("Enter the amount to pay.", "error");
+        busy($("button", e.target), async () => {
+          const { error: er } = await sb.rpc("admin_review_sell", { p_id: r.id, p_approve: true, p_note: e.target.note.value.trim() || null, p_amount: amt });
+          if (er) throw er;
+          closeModal(); toast(`Bought — ${money(amt)} added to the customer.`, "success"); refreshCounts(); route();
+        });
+      };
+    });
+  }));
+  $$("[data-sno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Don't buy #${b.dataset.sno}</h2><form id="snof">
+    <label>Reason (the customer sees it)</label><input name="note" required maxlength="200" placeholder="e.g. Code already used">
+    <button class="btn danger block mt">Reject</button></form>`, (m) => {
+    $("#snof", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("admin_review_sell", { p_id: Number(b.dataset.sno), p_approve: false, p_note: e.target.note.value.trim() });
+        if (er) throw er;
+        closeModal(); toast("Rejected.", "success"); refreshCounts(); route();
+      });
+    };
+  })));
+}
+async function sellitems(v) {
+  const { data, error } = await sb.from("sell_items").select("*").order("sort").order("id");
+  if (error) throw error;
+  v.innerHTML = `<p class="muted small">What you buy from customers and how much you pay for 1. Customers see this list in Settings → Sell to Premvio
+      (only when something is visible here). Customers need approved KYC to sell.</p>
+    <div class="toolbar"><button class="btn" id="addSI">${ICONS.plus} Add item</button></div>
+    ${table(["Photo", "Item", "We pay", "Qty", "Screenshot", "Fields", "Status", ""], data.map((it) => `<tr>
+      <td>${it.image_url ? `<img class="thumb" src="${esc(it.image_url)}">` : `<div class="thumb"></div>`}</td>
+      <td><b>${esc(it.name)}</b><div class="small muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.description)}</div></td>
+      <td><b>${money(it.pay_price)}</b></td><td class="small">${it.min_qty} – ${it.max_qty}</td>
+      <td class="small">${{ required: "must send", optional: "optional", off: "not asked" }[it.proof_mode]}</td>
+      <td class="small">${(it.fields || []).map((f) => esc(f.label) + (f.required ? "*" : "")).join(", ") || "—"}</td>
+      <td><span class="badge ${it.active ? "active" : "cancelled"}">${it.active ? "visible" : "hidden"}</span></td>
+      <td style="white-space:nowrap"><button class="btn sm soft" data-sie="${it.id}">Edit</button><button class="btn sm ghost" data-sid="${it.id}">Delete</button></td></tr>`),
+      "Nothing on the list yet — add what you want to buy")}`;
+  $("#addSI").onclick = () => sellItemForm();
+  $$("[data-sie]", v).forEach((b) => (b.onclick = () => sellItemForm(data.find((x) => x.id == b.dataset.sie))));
+  $$("[data-sid]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Delete item?", "It disappears from the customers' list. Old requests are kept.", "Delete", true))) return;
+    const { error: er } = await sb.from("sell_items").delete().eq("id", b.dataset.sid);
+    if (er) return toast(errMsg(er), "error");
+    toast("Deleted.", "success"); route();
+  }));
+}
+function sellItemForm(it = {}) {
+  const fields = JSON.parse(JSON.stringify(it.fields || (it.id ? [] : [{ id: newFieldId(), label: "Code", type: "text", required: true }])));
+  openModal(`<h2>${it.id ? "Edit" : "Add"} item we buy</h2><form id="sif">
+    <label>Photo <span class="muted">(optional)</span></label>
+    <div class="row"><img id="siprev" class="thumb ${it.image_url ? "" : "hidden"}" src="${esc(it.image_url || "")}" style="width:72px;height:72px"><input type="file" name="file" accept="image/*"></div>
+    <label>Name</label><input name="iname" required maxlength="100" value="${esc(it.name || "")}" placeholder="e.g. Google Play gift card NPR 1000">
+    <div class="grid-2"><div><label>We pay for 1 (${CFG.CURRENCY})</label><input type="number" name="pay" min="0" step="0.01" required value="${it.pay_price ?? ""}"></div>
+      <div><label>Display order</label><input type="number" name="sort" value="${it.sort ?? 0}"></div>
+      <div><label>Minimum quantity</label><input type="number" name="min" min="1" value="${it.min_qty ?? 1}"></div>
+      <div><label>Maximum quantity</label><input type="number" name="max" min="1" value="${it.max_qty ?? 100}"></div></div>
+    <label>Description / rules <span class="muted">(optional)</span></label><textarea name="desc" maxlength="2000" placeholder="e.g. Unused codes only. Region: Nepal.">${esc(it.description || "")}</textarea>
+    <label>Screenshot</label>
+    <div class="seg"><label><input type="radio" name="proof" value="required" ${it.proof_mode === "required" ? "checked" : ""}> Must send</label>
+      <label><input type="radio" name="proof" value="optional" ${(it.proof_mode || "optional") === "optional" ? "checked" : ""}> Optional</label>
+      <label><input type="radio" name="proof" value="off" ${it.proof_mode === "off" ? "checked" : ""}> Don't ask</label></div>
+    <div class="setting-row"><b>Visible to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${it.active !== false ? "checked" : ""}><span></span></label></div>
+    <h3 class="mt">What the customer fills in</h3>
+    <div id="sifields"></div><button type="button" class="btn soft block mt" id="addSIF">${ICONS.plus} Add field</button>
+    <button class="btn block mt" id="saveSI">Save</button></form>`, (m) => {
+    const f = $("#sif", m);
+    const fb = mountFieldBuilder($("#sifields", m), fields, "No fields — only the quantity.");
+    $("#addSIF", m).onclick = fb.add;
+    f.file.onchange = () => { const fl = f.file.files[0]; if (fl) { $("#siprev", m).src = URL.createObjectURL(fl); $("#siprev", m).classList.remove("hidden"); } };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      let flds;
+      try { flds = fb.collect(); } catch (er) { return toast(er.message, "error"); }
+      const mn = Math.max(1, Math.floor(Number(f.min.value) || 1)), mx = Math.max(mn, Math.floor(Number(f.max.value) || mn));
+      busy($("#saveSI", m), async () => {
+        let image_url = it.image_url || null;
+        if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "products");
+        const row = { name: f.iname.value.trim(), pay_price: Number(f.pay.value), sort: Number(f.sort.value) || 0, min_qty: mn, max_qty: mx,
+          description: f.desc.value.trim(), proof_mode: f.proof.value, active: f.active.checked, fields: flds, image_url };
+        const { error: er } = it.id ? await sb.from("sell_items").update(row).eq("id", it.id) : await sb.from("sell_items").insert(row);
+        if (er) throw er;
+        closeModal(); toast("Saved.", "success"); route();
+      });
+    };
+  });
+}
+
 /* ---------------- 📝 ACTION LOG (who changed what, when) ---------------- */
 const LOG_AREA = { products: "Product", payment_methods: "Payment method", app_settings: "Setting", promo_codes: "Promo code", banners: "Banner",
-  orders: "Order", deposit_requests: "Deposit request", payout_requests: "Withdrawal request", withdrawals: "PremvioCash code", kyc: "KYC",
+  orders: "Order", sell_requests: "Sell request", sell_items: "We buy item", deposit_requests: "Deposit request", payout_requests: "Withdrawal request", withdrawals: "PremvioCash code", kyc: "KYC",
   profiles: "Account", vouchers: "Voucher", transactions: "Money" };
 function logValue(x) {
   if (x == null) return "—";
@@ -1756,7 +1893,7 @@ async function actionlog(v) {
   if (error) throw error;
   const who2 = (id) => { const a = (admins || []).find((x) => x.id === id); return a ? `${esc(a.member_id)}<div class="small muted">${esc(a.full_name)}</div>` : "—"; };
   const areas = [["all", "All"], ["transactions", "Money"], ["orders", "Orders"], ["products", "Products"], ["deposit_requests", "Deposits"], ["payout_requests", "Withdrawals"],
-    ["profiles", "Accounts"], ["app_settings", "Settings"], ["payment_methods", "Payment methods"], ["promo_codes", "Promo codes"], ["kyc", "KYC"]];
+    ["sell_requests", "Sell requests"], ["profiles", "Accounts"], ["app_settings", "Settings"], ["payment_methods", "Payment methods"], ["promo_codes", "Promo codes"], ["kyc", "KYC"]];
   v.innerHTML = `<p class="muted small">Everything an admin changed: money added or taken, deposits and withdrawals approved, orders, prices, settings and staff.</p>
     ${rangeBar(AD.logRange)}${chips(areas, AD.logArea || "all", "la")}
     ${table(["When", "Admin", "What", "Item", "Details"], (data || []).map((r) => `<tr>
@@ -3013,7 +3150,7 @@ async function transactions(v) {
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
   if (error) throw error;
-  const types = [["all", "All"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"], ["voucher", "Gift vouchers"], ["commission", "Agent commission"]];
+  const types = [["all", "All"], ["sell", "Bought from customers"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"], ["voucher", "Gift vouchers"], ["commission", "Agent commission"]];
   const inSum = data.filter((t) => t.amount > 0).reduce((a, t) => a + Number(t.amount), 0);
   const outSum = data.filter((t) => t.amount < 0).reduce((a, t) => a - Number(t.amount), 0);
   v.innerHTML = rangeBar(AD.txRange) + chips(types, AD.txType, "tt") +
