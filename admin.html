@@ -995,6 +995,12 @@ button.tile-wide { width: 100%; font: inherit; color: var(--text); text-align: l
 .info-field .if-label { font-size: .8rem; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
 .info-field .if-row { display: flex; align-items: center; gap: 10px; }
 .info-field .if-val { flex: 1; font-weight: 700; word-break: break-all; white-space: pre-wrap; }
+/* V50: details shown under a chosen option */
+.opt-info:empty { display: none; }
+.opt-info .info-field { margin-top: 8px; border-style: solid; border-color: rgba(31, 162, 255, .35); }
+.opt-edit { margin-top: 8px; }
+.opt-edit .opt-info-in { margin-top: 6px; min-height: 38px; padding: 8px 10px; font-size: .85rem; resize: vertical; }
+.info-field .if-val { word-break: normal; overflow-wrap: break-word; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1371,6 +1377,34 @@ function bindRange(root, r, onChange) {
   $$("[data-preset]", root).forEach((b) => (b.onclick = () => onChange(defaultRange(Number(b.dataset.preset)))));
 }
 function fmtDay(s) { return new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
+
+/* ---- details that appear when an option is chosen (fd.info = {option: text}) ---- */
+function optInfoBox(f) {
+  const info = f && f.info && typeof f.info === "object" ? f.info : null;
+  if (!info || !Object.keys(info).length) return "";
+  return `<div class="opt-info" data-oi="${esc(f.id)}" data-info="${esc(JSON.stringify(info))}"></div>`;
+}
+function optInfoPaint(box) {
+  const form = box.closest("form"); if (!form) return;
+  let info = {}; try { info = JSON.parse(box.dataset.info || "{}"); } catch (e) {}
+  const els = [...form.querySelectorAll(`[name="f_${box.dataset.oi}"]`)];
+  const picked = els.filter((el) => (el.type === "radio" || el.type === "checkbox" ? el.checked : true)).map((el) => el.value).filter(Boolean);
+  box.innerHTML = picked.filter((v) => info[v]).map((v) => `<div class="info-field"><div class="if-row"><span class="if-val">${esc(info[v])}</span>
+    <button type="button" class="btn sm soft" onclick="copyText(this.dataset.v)" data-v="${esc(info[v])}">${ICONS.copy} Copy</button></div></div>`).join("");
+}
+document.addEventListener("change", (e) => {
+  const n = e.target && e.target.name;
+  if (!n || !n.startsWith("f_")) return;
+  const form = e.target.closest("form"); if (!form) return;
+  form.querySelectorAll(`.opt-info[data-oi="${CSS.escape(n.slice(2))}"]`).forEach(optInfoPaint);
+});
+// boxes added with a value already chosen (editing a cart item, Buy again) show their details straight away
+new MutationObserver((list) => {
+  for (const m of list) for (const node of m.addedNodes) {
+    if (node.nodeType !== 1) continue;
+    (node.matches?.(".opt-info") ? [node] : [...node.querySelectorAll?.(".opt-info") || []]).forEach((b) => setTimeout(() => optInfoPaint(b), 0));
+  }
+}).observe(document.documentElement, { childList: true, subtree: true });
 
 // Method button link: "@premvio", "premvio", "t.me/premvio" or a full https link → a link that opens.
 // Telegram usernames open the Telegram app (https://t.me/…). Returns "" if it can't be used.
@@ -2220,17 +2254,18 @@ function productForm(p = {}) {
     <button class="btn block mt">Save product</button></form>`, (m) => {
     const f = $("#pf", m);
     const box = $("#fields", m);
-    const optRow = (o, j) => `<div class="opt-edit row" data-oi="${j}">
+    const optRow = (o, j, fd) => `<div class="opt-edit" data-oi="${j}"><div class="row" style="gap:6px">
         <input class="grow" data-o="label" value="${esc(o.label)}" placeholder="Option, e.g. 3 months" maxlength="100">
         <input type="number" data-o="price" value="${o.price ? o.price : ""}" placeholder="+ price" min="0" step="0.01" style="width:110px" title="Extra price added for this option (${CFG.CURRENCY})">
-        <button type="button" class="btn sm ghost" data-rmopt title="Remove option">✕</button></div>`;
+        <button type="button" class="btn sm ghost" data-rmopt title="Remove option">✕</button></div>
+        <textarea data-o="info" rows="1" maxlength="500" class="opt-info-in" placeholder="Details shown when this is chosen (optional) — e.g. address, ID">${esc((fd.info || {})[o.label] || "")}</textarea></div>`;
     const draw = () => {
       box.innerHTML = fields.length ? fields.map((fd, i) => `<div class="field-row" data-i="${i}">
         <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="${OPTION_TYPES.includes(fd.type) ? "Question, e.g. How many months?" : "Field name, e.g. Telegram username"}" required>
           <select data-k="type" style="width:auto">${PRODUCT_FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
         ${OPTION_TYPES.includes(fd.type) ? `<div class="opt-list mt">
             <div class="row small muted" style="justify-content:space-between"><span>Options the customer can pick</span><span>Extra price (${CFG.CURRENCY})</span></div>
-            ${(fd.options || []).map(optRow).join("")}
+            ${(fd.options || []).map((o, j) => optRow(o, j, fd)).join("")}
             <button type="button" class="btn sm soft mt" data-addopt>${ICONS.plus} Add option</button></div>`
           : fd.type === "info" ? `<div class="row mt"><textarea class="grow" data-k="value" rows="2" maxlength="500" placeholder="Text the customer sees and can copy, e.g. eSewa ID 98XXXXXXXX">${esc(fd.value || "")}</textarea></div>`
           : `<div class="row mt"><input class="grow" data-k="placeholder" value="${esc(fd.placeholder || "")}" placeholder="Hint shown inside the box (optional)"></div>`}
@@ -2249,7 +2284,12 @@ function productForm(p = {}) {
       const ph = $('[data-k="placeholder"]', row), val = $('[data-k="value"]', row);
       if (ph) fd.placeholder = ph.value.trim();
       if (val) fd.value = val.value.trim();
-      if ($(".opt-list", row)) fd.options = $$(".opt-edit", row).map((r) => ({ label: $('[data-o="label"]', r).value.trim(), price: $('[data-o="price"]', r).value }));
+      if ($(".opt-list", row)) {
+        const rows = $$(".opt-edit", row);
+        fd.options = rows.map((r) => ({ label: $('[data-o="label"]', r).value.trim(), price: $('[data-o="price"]', r).value }));
+        fd.info = {};
+        rows.forEach((r) => { const l = $('[data-o="label"]', r).value.trim(), t = $('[data-o="info"]', r).value.trim(); if (l && t) fd.info[l] = t; });
+      }
     });
     box.onchange = (e) => {
       if (e.target.dataset.k !== "type") return;
@@ -2323,7 +2363,8 @@ function productForm(p = {}) {
             o.price = Math.round(pr * 100) / 100;
           }
           delete fd.placeholder;
-        } else delete fd.options;
+          if (fd.info && !Object.keys(fd.info).length) delete fd.info;
+        } else { delete fd.options; delete fd.info; }
       }
       if (!isFree && f.price.value === "") return toast("Type the price (use 0 if the options carry the price).", "error");
       const price = f.price.value === "" ? 0 : Number(f.price.value);
@@ -3331,7 +3372,11 @@ function mountFieldBuilder(box, fields, emptyText) {
       <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="Field name, e.g. eSewa ID" required>
         <select data-k="type" style="width:auto">${FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       <div class="row mt">
-        ${fd.type === "select" ? `<input class="grow" data-k="options" value="${esc((fd.options || []).map((o) => (typeof o === "string" ? o : o.label)).join(", "))}" placeholder="Options, separated by commas">`
+        ${fd.type === "select" ? `<div class="grow opt-list">${(fd.options || []).map((o) => (typeof o === "string" ? o : o.label)).map((l, j) => `<div class="opt-edit" data-oi="${j}">
+            <div class="row" style="gap:6px"><input class="grow" data-o="label" value="${esc(l)}" placeholder="Option, e.g. Kathmandu" maxlength="100">
+            <button type="button" class="btn sm ghost" data-rmopt title="Remove option">✕</button></div>
+            <textarea data-o="info" rows="1" maxlength="500" class="opt-info-in" placeholder="Details shown when this is chosen (optional)">${esc((fd.info || {})[l] || "")}</textarea></div>`).join("")}
+            <button type="button" class="btn sm soft mt" data-addopt>${ICONS.plus} Add option</button></div>`
           : fd.type === "info" ? `<textarea class="grow" data-k="value" rows="2" maxlength="500" placeholder="Text they see and can copy, e.g. eSewa ID 98XXXXXXXX">${esc(fd.value || "")}</textarea>`
           : `<input class="grow" data-k="placeholder" value="${esc(fd.placeholder || "")}" placeholder="Hint shown inside the box (optional)">`}
         ${fd.type === "info" ? "" : `<label class="row small" style="margin:0;white-space:nowrap;color:var(--text)"><input type="checkbox" data-k="required" ${fd.required ? "checked" : ""} style="width:auto"> Required</label>`}
@@ -3347,17 +3392,31 @@ function mountFieldBuilder(box, fields, emptyText) {
     fd.label = $('[data-k="label"]', row).value.trim();
     fd.type = $('[data-k="type"]', row).value;
     fd.required = fd.type !== "info" && !!$('[data-k="required"]', row)?.checked;
-    const o = $('[data-k="options"]', row), ph = $('[data-k="placeholder"]', row), val = $('[data-k="value"]', row);
-    if (o) fd.options = o.value.split(",").map((x) => x.trim()).filter(Boolean);
+    const ph = $('[data-k="placeholder"]', row), val = $('[data-k="value"]', row);
+    if ($(".opt-list", row)) {
+      const rows = $$(".opt-edit", row);
+      fd.options = rows.map((r) => $('[data-o="label"]', r).value.trim());
+      fd.info = {};
+      rows.forEach((r) => { const l = $('[data-o="label"]', r).value.trim(), t = $('[data-o="info"]', r).value.trim(); if (l && t) fd.info[l] = t; });
+    }
     if (ph) fd.placeholder = ph.value.trim();
     if (val) fd.value = val.value.trim();
   });
-  box.onchange = (e) => { if (e.target.dataset.k === "type") { sync(); draw(); } };
+  box.onchange = (e) => {
+    if (e.target.dataset.k !== "type") return;
+    sync();
+    const fd = fields[e.target.closest(".field-row").dataset.i];
+    if (fd.type === "select" && !(fd.options || []).length) fd.options = ["", ""];
+    draw();
+  };
   box.onclick = (e) => {
-    const row = e.target.closest(".field-row"); if (!row) return;
+    const btn = e.target.closest("button"); if (!btn) return;
+    const row = btn.closest(".field-row"); if (!row) return;
     const i = Number(row.dataset.i);
-    if (e.target.dataset.mv) { sync(); const j = i + Number(e.target.dataset.mv); [fields[i], fields[j]] = [fields[j], fields[i]]; draw(); }
-    if (e.target.hasAttribute("data-rm")) { sync(); fields.splice(i, 1); draw(); }
+    if (btn.dataset.mv) { sync(); const j = i + Number(btn.dataset.mv); [fields[i], fields[j]] = [fields[j], fields[i]]; draw(); }
+    else if (btn.hasAttribute("data-rm")) { sync(); fields.splice(i, 1); draw(); }
+    else if (btn.hasAttribute("data-addopt")) { sync(); (fields[i].options = fields[i].options || []).push(""); draw(); $$(`.field-row[data-i="${i}"] [data-o="label"]`, box).pop()?.focus(); }
+    else if (btn.hasAttribute("data-rmopt")) { sync(); fields[i].options.splice(Number(btn.closest(".opt-edit").dataset.oi), 1); draw(); }
   };
   draw();
   return {
@@ -3366,8 +3425,12 @@ function mountFieldBuilder(box, fields, emptyText) {
       sync();
       for (const fd of fields) {
         if (!fd.label) throw new Error("Every form field needs a name.");
-        if (fd.type === "select" && !(fd.options || []).length) throw new Error(`Add options for "${fd.label}".`);
-        if (fd.type !== "select") delete fd.options;
+        if (fd.type === "select") {
+          fd.options = (fd.options || []).filter(Boolean);
+          if (!fd.options.length) throw new Error(`Add options for "${fd.label}".`);
+          if (new Set(fd.options.map((x) => x.toLowerCase())).size !== fd.options.length) throw new Error(`"${fd.label}" has the same option twice.`);
+          if (fd.info && !Object.keys(fd.info).length) delete fd.info;
+        } else { delete fd.options; delete fd.info; }
         if (fd.type === "info") { if (!fd.value) throw new Error(`Write the text for "${fd.label}".`); fd.required = false; delete fd.placeholder; }
         else delete fd.value;
       }
