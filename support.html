@@ -1052,6 +1052,93 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; d
 .dl-steps span.on { background: rgba(34, 201, 131, .16); color: var(--green); font-weight: 700; }
 .dl-admin { margin-top: 6px; padding: 8px; border-radius: 10px; background: var(--card-2); line-height: 1.45; }
 .dl-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+/* ===== V60 agent panel (clean dark, like a payment terminal app) ===== */
+.agent-ui.ag2 {
+  --bg: #141619; --card: #22252b; --card-2: #2b2f36; --line: rgba(255, 255, 255, .07); --text: #eef0f4; --muted: #9aa0ab;
+  --blue: #7b8cff; --grad: linear-gradient(135deg, #7b8cff, #5b6cf0); --green: #35c46b; --red: #ef5350;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg);
+}
+.ag2 .ag-app { padding-bottom: 86px; }
+.ag-head { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 0 10px; background: var(--bg); }
+.ag-id { flex: 1; text-align: center; font-weight: 800; font-size: 1.2rem; letter-spacing: .01em; }
+.ag-hbtn { position: relative; width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+  display: grid; place-items: center; cursor: pointer; font-size: 1.2rem; flex: none; }
+.ag-hbtn svg { width: 22px; height: 22px; }
+.ag-hbtn.ghost { visibility: hidden; }
+.ag-badge { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: var(--blue); color: #fff;
+  font-size: .66rem; font-style: normal; font-weight: 800; display: grid; place-items: center; }
+.ag-card { background: var(--card); border-radius: 16px; padding: 14px 16px 18px; }
+.ag-pill { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 99px; padding: 8px 14px; background: rgba(123, 140, 255, .18); color: var(--text); font: inherit; font-size: .9rem; cursor: pointer; }
+.ag-pill svg { width: 20px; height: 20px; color: var(--blue); }
+.ag-ico { width: 36px; height: 36px; border: 0; background: none; color: var(--blue); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.ag-ico svg { width: 24px; height: 24px; }
+.ag-ico.box { width: 46px; height: 46px; border-radius: 12px; background: var(--card-2); color: var(--muted); flex: none; }
+.ag-lbl { margin-top: 18px; color: var(--text); font-size: .92rem; }
+.ag-big { font-size: 1.75rem; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ag-bal { color: var(--text); font-size: .9rem; margin-top: 4px; opacity: .9; }
+.ag-bar { height: 10px; border-radius: 99px; background: #0d0f12; margin-top: 16px; overflow: hidden; padding: 2px; }
+.ag-bar i { display: block; height: 100%; border-radius: 99px; background: var(--blue); transition: width .4s; }
+.ag-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
+.ag-btn { border: 0; background: var(--card); color: var(--text); padding: 16px 8px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; font: inherit; font-size: .92rem; }
+.ag-btn:first-child { border-radius: 0 0 0 16px; } .ag-btn:last-child { border-radius: 0 0 16px 0; }
+.ag-btn svg { width: 26px; height: 26px; }
+.ag-btn.in { color: var(--green); } .ag-btn.out { color: var(--red); }
+.ag-btn:active { background: var(--card-2); }
+.ag-orders { width: 100%; margin-top: 12px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 0; background: var(--card); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.ag-orders > svg { width: 22px; height: 22px; color: var(--blue); flex: none; }
+.ag-orders > svg:last-child { color: var(--muted); width: 18px; height: 18px; }
+.ag-rh { margin: 22px 0 10px; } .ag-rh h3 { margin: 0; font-size: 1.15rem; }
+.ag-tx { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+.ag-txi { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.ag-txi svg { width: 22px; height: 22px; }
+.ag-txi.in { background: rgba(53, 196, 107, .14); color: var(--green); }
+.ag-txi.out { background: rgba(239, 83, 80, .14); color: var(--red); }
+.ag-txi.gold { background: rgba(255, 200, 61, .14); color: var(--gold); }
+.ag-tx b { font-weight: 700; }
+.ag-txr { text-align: right; }
+.ag-txr b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ag-sm { font-size: .78rem; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.ag-empty { background: var(--card); border-radius: 14px; padding: 22px 16px; text-align: center; color: var(--text); opacity: .85; }
+.ag-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; justify-content: space-around; padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+  background: #1b1d22; border-top: 1px solid var(--line); }
+.ag-nav button { border: 0; background: none; color: var(--muted); padding: 8px 30px; cursor: pointer; }
+.ag-nav button svg { width: 26px; height: 26px; }
+.ag-nav button.on { color: var(--blue); }
+body.ag-chat-on .ag-nav { display: none; }
+/* screens */
+.ag-shead { display: flex; align-items: center; gap: 10px; padding: 6px 0 14px; }
+.ag-shead h2 { margin: 0; font-size: 1.25rem; }
+.ag-shead .ag-hbtn { background: none; border: 0; }
+.ag-ssub { font-size: .8rem; color: var(--text); font-weight: 700; opacity: .85; }
+.ag-sum { display: flex; align-items: center; background: var(--card); border-radius: 16px; padding: 16px 8px; margin-bottom: 18px; }
+.ag-sum > div { flex: 1; text-align: center; } .ag-sum > i { width: 1px; align-self: stretch; background: var(--line); }
+.ag-sum span { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: .85rem; }
+.ag-sum span svg { width: 18px; height: 18px; }
+.ag-sum span.in, .ag-sum .in + b { color: var(--green); } .ag-sum span.out { color: var(--red); }
+.ag-sum b { display: block; margin-top: 6px; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.ag-sum > div:first-child b { color: var(--green); } .ag-sum > div:last-child b { color: var(--red); }
+.ag-search { display: flex; gap: 10px; margin-bottom: 16px; }
+.ag-sbox { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 12px; padding: 0 12px; }
+.ag-sbox svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.ag-sbox input { border: 0; background: none; padding: 12px 0; margin: 0; }
+.ag-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.ag-tabs button { flex: 1; border: 1px solid transparent; background: none; color: var(--text); padding: 9px 4px; border-radius: 10px; font: inherit; cursor: pointer; }
+.ag-tabs button.on { border-color: var(--blue); color: var(--blue); }
+.ag-me { background: var(--card); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+.ag-me b { display: block; font-size: 1.05rem; } .ag-me span { color: var(--muted); font-size: .85rem; }
+.ag-sets { display: flex; flex-direction: column; }
+.ag-set, .ag-chatrow { display: flex; align-items: center; gap: 14px; padding: 15px 4px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.ag-set b, .ag-chatrow b { font-weight: 600; display: block; }
+.ag-set small, .ag-chatrow small { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.ag-si { width: 24px; height: 24px; color: var(--muted); display: grid; place-items: center; flex: none; }
+.ag-si svg { width: 22px; height: 22px; }
+.ag-set > svg:last-child { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.ag-set.red, .ag-set.red .ag-si { color: var(--red); }
+.ag-chats { margin-top: 10px; }
+.ag-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ag-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); flex: none; }
+.ag2 .wa.ag-wa { position: fixed; inset: 0; z-index: 50; }
+.badge.agent-chat { background: rgba(255, 200, 61, .16); color: var(--gold); }
 
 </style>
 <title>Premvio Support</title>
@@ -1728,7 +1815,7 @@ async function chats(v) {
   v.innerHTML = `<div class="chips">${[["waiting", "Waiting"], ["mine", "My chats"], ["closed", "Solved by me"]]
       .map(([k, l]) => `<button class="chip ${SP.f === k ? "on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
     <div class="sp-list">${data.length ? data.map((t) => `<div class="card sp-item" data-open="${t.id}">
-      <div class="row between" style="gap:8px"><div style="min-width:0"><b>${esc(t.full_name || "Customer")}</b> <span class="small muted mono">${esc(t.member_id)}</span></div>
+      <div class="row between" style="gap:8px"><div style="min-width:0"><b>${esc(t.full_name || "Customer")}</b> <span class="small muted mono">${esc(t.member_id)}</span>${t.role === "agent" ? ` <span class="badge agent-chat">Premvio Agent</span>` : ""}</div>
         <span class="small muted" style="white-space:nowrap">${fmtDate(t.updated_at)}</span></div>
       <div class="sp-sub"><b>${esc(t.subject)}</b> <span class="muted">#${t.id}${t.order_id ? " · Order #" + t.order_id : ""}</span></div>
       ${t.last_msg ? `<div class="small muted sp-last">${esc(t.last_msg)}</div>` : ""}
@@ -1759,7 +1846,7 @@ async function chat(v, id) {
   v.innerHTML = `<a class="back-link" href="#chats">← All chats</a>
     <div class="grid-2 mk-two sp-two">
       <div class="card"><div class="row between" style="gap:8px"><div style="min-width:0"><h2 style="margin:0">${esc(t.subject)} <span class="muted small">#${t.id}</span></h2>
-          <div class="small muted">${esc(info.full_name || "")} · ${esc(info.member_id)}${accepted && open ? " · " + (mineOrFree ? "accepted by you" : "accepted by " + esc(info.accepted_by || "")) : ""}</div></div>
+          <div class="small muted">${info.role === "agent" ? `<span class="badge agent-chat">Premvio Agent</span> ` : ""}${esc(info.full_name || "")} · ${esc(info.member_id)}${accepted && open ? " · " + (mineOrFree ? "accepted by you" : "accepted by " + esc(info.accepted_by || "")) : ""}</div></div>
           ${open ? `<button class="btn sm success" id="closeT">Mark solved</button>` : `<span class="badge completed">solved</span>`}</div>
         <div class="chat admin-chat" id="chatBox"></div>
         ${open && !accepted ? `<div class="sp-accept"><b>Waiting for support</b><button class="btn" id="accBtn">Accept chat</button></div>` : `
@@ -1801,7 +1888,7 @@ async function chat(v, id) {
 }
 function infoCard(i) {
   const rows = (list, fn) => list.length ? list.map(fn).join("") : `<div class="small muted">None</div>`;
-  return `<h3 style="margin-top:0">Customer</h3>
+  return `<h3 style="margin-top:0">${i.role === "agent" ? `Premvio Agent <span class="badge agent-chat">agent</span>` : "Customer"}</h3>
     <div class="row between"><div><b>${esc(i.full_name || "—")}</b><div class="mono small muted">${esc(i.member_id)}</div></div>
       <button class="btn sm soft" onclick="copyText('${esc(i.member_id)}')">${ICONS.copy}</button></div>
     <div class="sp-bal">Balance <b>${money(i.balance || 0)}</b></div>
