@@ -1139,6 +1139,32 @@ body.ag-chat-on .ag-nav { display: none; }
 .ag-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); flex: none; }
 .ag2 .wa.ag-wa { position: fixed; inset: 0; z-index: 50; }
 .badge.agent-chat { background: rgba(255, 200, 61, .16); color: var(--gold); }
+/* ===== V61 login: photo background + moving stars + glass card ===== */
+.auth-hero { position: relative; isolation: isolate; overflow: hidden; min-height: 100vh; min-height: 100dvh; }
+.hero-bg { position: fixed; inset: -4%; z-index: -3; background-size: cover; background-position: center; animation: heroZoom 22s ease-in-out infinite alternate; }
+.hero-shade { position: fixed; inset: 0; z-index: -2;
+  background: radial-gradient(120% 70% at 50% 45%, rgba(4, 10, 32, .15), rgba(4, 10, 32, .55) 70%),
+              linear-gradient(180deg, rgba(4, 10, 32, .35) 0%, rgba(4, 10, 32, .05) 35%, rgba(4, 10, 32, .65) 100%); }
+.hero-stars { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+@keyframes heroZoom { from { transform: scale(1) translateY(0); } to { transform: scale(1.08) translateY(-1.5%); } }
+.auth-hero .auth-box { position: relative; z-index: 1; animation: heroUp .8s cubic-bezier(.2, .8, .2, 1) both .15s; }
+@keyframes heroUp { from { opacity: 0; transform: translateY(40px) scale(.97); } to { opacity: 1; transform: none; } }
+.hero-logo { animation: heroLogo 1s ease both, heroFloat 5s ease-in-out 1s infinite; filter: drop-shadow(0 10px 34px rgba(80, 160, 255, .65)) !important; }
+@keyframes heroLogo { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+@keyframes heroFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.hero-tag { color: #fff; font-weight: 700; letter-spacing: .02em; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); margin: 0 0 14px; }
+.card.glass { background: rgba(10, 18, 48, .55); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .12); }
+.card.glass input, .card.glass select, .card.glass textarea { background: rgba(0, 0, 0, .3); border-color: rgba(255, 255, 255, .14); }
+.card.glass .tabs { background: rgba(0, 0, 0, .28); }
+.card.glass label { color: rgba(255, 255, 255, .8); }
+.auth-swap { animation: heroSwap .35s ease both; }
+@keyframes heroSwap { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.auth-hero .auth-lang { z-index: 2; }
+@media (prefers-reduced-motion: reduce) { .hero-bg, .hero-logo, .auth-hero .auth-box, .auth-swap { animation: none !important; } }
+/* stars + smileys behind the app (V61) */
+.app-stars { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: .75; }
+.app.cust-app { position: relative; z-index: 1; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1824,6 +1850,7 @@ const SECTIONS = [
   { id: "agentdeposits", label: "Agent deposits", icon: ICONS.cash, count: "pending_agent_deposits" },
   { id: "payouts", label: "Withdrawal requests", icon: ICONS.wallet, count: "pending_payouts" },
   { id: "withdrawals", label: "PremvioCash codes", icon: ICONS.wallet, count: "pending_withdrawals" },
+  { id: "payoutcheck", label: "Payout check", icon: ICONS.shield, count: "payout_not_paid" },
   { id: "methods", label: "Payment methods", icon: ICONS.grid },
   { id: "agentmethods", label: "Agent payment methods", icon: ICONS.grid },
   { id: "agentcomm", label: "Agent commission", icon: ICONS.cash },
@@ -1895,6 +1922,9 @@ async function refreshCounts() {
   data.pending_sells = sr.error ? 0 : sr.count || 0;
   if (!c.error && !a.error) { data.pending_deposits = c.count || 0; data.pending_agent_deposits = a.count || 0; }
   data.open_tickets = tk.error ? 0 : tk.count || 0;
+  const np = await sb.from("withdrawals").select("id", { count: "exact", head: true }).eq("customer_paid", false)
+    .gte("paid_answer_at", new Date(Date.now() - 7 * 864e5).toISOString());
+  data.payout_not_paid = np.error ? 0 : np.count || 0;   // "No" answers in the last 7 days
   AD.stats = data;
   $$("[data-count]").forEach((el) => { const n = data[el.dataset.count]; el.textContent = n; el.classList.toggle("hidden", !n); });
 }
@@ -1904,7 +1934,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -3589,6 +3619,26 @@ async function withdrawals(v) {
       closeModal(); toast("Rejected — money returned to the customer.", "success"); refreshCounts(); route();
     }); };
   })));
+}
+
+/* ---------------- PAYOUT CHECK: customers answer "Did you get paid?" (kept as proof) ---------------- */
+async function payoutcheck(v) {
+  if (!AD.pcF) AD.pcF = "no";
+  let q = sb.from("withdrawals").select("*, customer:profiles!withdrawals_user_id_fkey(full_name, member_id, phone), agent:profiles!withdrawals_agent_id_fkey(full_name, member_id, phone)")
+    .eq("status", "completed").eq("ask_paid", true).order("completed_at", { ascending: false }).limit(500);
+  if (AD.pcF === "no") q = q.eq("customer_paid", false);
+  else if (AD.pcF === "yes") q = q.eq("customer_paid", true);
+  else if (AD.pcF === "wait") q = q.is("customer_paid", null);
+  const { data, error } = await q;
+  if (error) throw error;
+  const person = (p) => p ? `${esc(p.full_name || "")}<div class="small muted mono">${esc(p.member_id || "")}${p.phone ? " · " + esc(p.phone) : ""}</div>` : "—";
+  v.innerHTML = chips([["no", "Not paid"], ["wait", "No answer yet"], ["yes", "Paid"], ["all", "All"]], AD.pcF, "pcf") +
+    table(["Paid out", "Code", "Amount", "Customer", "Agent", "Customer says"], data.map((w) => `<tr>
+      <td class="small">${fmtDate(w.completed_at)}</td><td class="mono">${esc(w.code)}</td><td><b>${money(w.amount)}</b></td>
+      <td>${person(w.customer)}</td><td>${person(w.agent)}</td>
+      <td>${w.customer_paid == null ? `<span class="badge pending">no answer</span>` : w.customer_paid ? `<span class="badge completed">Yes</span>` : `<span class="badge rejected">No — not paid</span>`}
+        ${w.paid_answer_at ? `<div class="small muted">${fmtDate(w.paid_answer_at)}</div>` : ""}</td></tr>`), AD.pcF === "no" ? "No complaints" : "Nothing here");
+  $$("[data-pcf]", v).forEach((c) => (c.onclick = () => { AD.pcF = c.dataset.pcf; route(); }));
 }
 
 /* ---------------- TRANSACTIONS ---------------- */
