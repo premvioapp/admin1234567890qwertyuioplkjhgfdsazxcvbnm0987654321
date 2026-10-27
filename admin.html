@@ -1038,6 +1038,18 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; d
 .bubble.me.auto .who, .bubble.me .who { color: rgba(255,255,255,.85); }
 .wa-sys { align-self: center; margin: 6px auto; font-size: .75rem; color: var(--muted); background: var(--card-2); padding: 4px 10px; border-radius: 999px; text-align: center; }
 @media (max-width: 860px) { .sp-two { grid-template-columns: 1fr; } }
+/* V58 delivery */
+.dl-box { margin-top: 14px; padding: 12px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--line); }
+.dl-box label:first-of-type { margin-top: 6px; }
+.dl-title { display: flex; align-items: center; gap: 8px; }
+.dl-title svg { width: 18px; height: 18px; color: var(--blue); }
+.dl-save { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; margin-top: 10px; }
+.dl-save input { width: auto; margin: 0; }
+.dl-steps { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.dl-steps span { font-size: .72rem; padding: 3px 8px; border-radius: 999px; background: var(--card-2); color: var(--muted); }
+.dl-steps span.on { background: rgba(34, 201, 131, .16); color: var(--green); font-weight: 700; }
+.dl-admin { margin-top: 6px; padding: 8px; border-radius: 10px; background: var(--card-2); line-height: 1.45; }
+.dl-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1793,7 +1805,11 @@ function orderTable(list) {
     <td>${o.id}</td><td>${who(o.profiles)}</td><td>${esc(o.product_name)}
       ${o.agent_id ? `<div class="small agent-tag">📦 ${agentName(o.agent_id)} · gets ${money(o.agent_pay || 0)} ${agentPayBadge(o)}</div>` : ""}
       ${o.delivery_proof ? `<div><a class="small" href="${esc(o.delivery_proof)}" target="_blank" rel="noopener">📷 Delivery proof</a></div>` : ""}
-      ${o.is_gift ? `<div class="gift-tag small">🎁 GIFT for ${esc(o.gift?.to_name || "")}${o.gift?.to_member ? " (" + esc(o.gift.to_member) + ")" : ""}</div>${o.gift?.message ? `<div class="small muted">“${esc(o.gift.message)}”</div>` : ""}` : ""}</td>
+      ${o.is_gift ? `<div class="gift-tag small">🎁 GIFT for ${esc(o.gift?.to_name || "")}${o.gift?.to_member ? " (" + esc(o.gift.to_member) + ")" : ""}</div>${o.gift?.message ? `<div class="small muted">“${esc(o.gift.message)}”</div>` : ""}` : ""}
+      ${Number(o.delivery_charge) > 0 ? `<div class="dl-admin small"><b>🚚 Delivery ${money(o.delivery_charge)}</b>${o.delivery ? `<div>${esc(o.delivery.name)} · <a href="tel:${esc(o.delivery.phone)}">${esc(o.delivery.phone)}</a></div><div>${esc(o.delivery.address)}</div>
+        <button class="link-btn small" onclick="copyText(this.dataset.v)" data-v="${esc(`${o.delivery.name}, ${o.delivery.phone}, ${o.delivery.address}`)}">copy address</button>` : ""}
+        ${o.status === "pending" ? `<div class="dl-btns">${[["packed", "Packed"], ["on_the_way", "On the way"], ["delivered", "Delivered"]].map(([k, l]) =>
+          `<button class="btn sm ${o.delivery_status === k ? "" : "soft"}" data-dlv="${o.id}" data-st="${k}">${l}</button>`).join("")}</div>` : o.delivery_status ? `<span class="badge completed">${esc(o.delivery_status.replace(/_/g, " "))}</span>` : ""}</div>` : ""}</td>
       <td>${o.quantity}</td><td><b>${money(o.total)}</b>${Number(o.discount) > 0 ? `<div class="small" style="color:var(--green)">🏷️ ${esc(o.promo_code || "")} −${money(o.discount)}</div>` : ""}${Number(o.points_used) > 0 ? `<div class="small" style="color:var(--green)">⭐ points −${money(o.points_used)}</div>` : ""}</td>
     <td>${formView(o.form_data)}</td>
     <td class="small">${fmtDate(o.created_at)}</td>
@@ -1809,6 +1825,15 @@ function orderTable(list) {
   </tr>`), "No orders");
 }
 function bindOrderButtons(v, list) {
+  $$("[data-dlv]", v).forEach((b) => (b.onclick = async () => {
+    const st = b.dataset.st;
+    if (st === "delivered" && !(await confirmBox(`Order #${b.dataset.dlv} delivered?`, "The order will be marked completed.", "Delivered"))) return;
+    busy(b, async () => {
+      const { error } = await sb.rpc("admin_set_delivery", { p_order: Number(b.dataset.dlv), p_status: st });
+      if (error) throw error;
+      toast(st === "delivered" ? "Delivered — order completed." : "Delivery status saved.", "success"); refreshCounts(); route();
+    });
+  }));
   $$("[data-rok]", v).forEach((b) => (b.onclick = () => {
     const o = (list || []).find((x) => x.id == b.dataset.rok) || { id: b.dataset.rok };
     openModal(`<h2>${b.dataset.direct ? "Refund" : "Approve refund for"} order #${o.id}</h2>
@@ -2302,6 +2327,8 @@ function productForm(p = {}) {
     <div><label>Display order (lower = first)</label><input type="number" name="sort" value="${p.sort ?? 0}"></div>
     <div><label>Minimum quantity</label><input type="number" name="min_qty" min="1" value="${p.min_qty ?? 1}"></div>
     <div><label>Maximum quantity</label><input type="number" name="max_qty" min="1" value="${p.max_qty ?? 1000}"></div></div>
+    <label>Delivery charge (${CFG.CURRENCY}) <span class="muted">(0 = no delivery)</span></label>
+    <input type="number" name="delivery_charge" min="0" step="0.01" value="${p.delivery_charge ?? 0}">
     <p class="small muted">💡 If the price depends on what the customer picks (e.g. 3 / 6 / 12 months), set the price to <b>0</b> and give each option its price below.</p>
     <h3 class="mt">🏷️ Bulk prices <span class="muted small">(optional)</span></h3>
     <p class="small muted">Cheaper price per 1 when the customer buys more. Example: 100 or more → NPR 2.30 each. Option prices are added on top.</p>
@@ -2482,7 +2509,8 @@ function productForm(p = {}) {
           out_of_stock: f.oos.checked, daily_limit: f.daily_limit.value === "" ? null : Math.max(0, Math.floor(Number(f.daily_limit.value))),
           sale_price: salePrice, sale_starts_at: salePrice == null ? null : saleStart, sale_ends_at: salePrice == null ? null : saleEnd,
           is_free: isFree, free_per_user: isFree ? fpu : p.free_per_user ?? null,
-          agent_id: agentId, agent_pay: agentId ? Math.round(Number(f.agent_pay.value) * 100) / 100 : null, price_tiers: tiersOut };
+          agent_id: agentId, agent_pay: agentId ? Math.round(Number(f.agent_pay.value) * 100) / 100 : null, price_tiers: tiersOut,
+          delivery_charge: Math.max(0, Math.round(Number(f.delivery_charge.value || 0) * 100) / 100) };
         const { error } = p.id ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
         if (error) throw error;
         closeModal(); toast("Product saved.", "success"); route();
