@@ -1916,7 +1916,7 @@ async function refreshCounts() {
   const pend = (role) => sb.from("deposit_requests").select("id", { count: "exact", head: true }).eq("status", "pending").eq("requester_role", role);
   const [c, a, tk, ap] = await Promise.all([pend("customer"), pend("agent"),
     sb.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open").eq("waiting_for", "admin"),
-    sb.from("orders").select("id", { count: "exact", head: true }).eq("agent_pay_status", "waiting")]);
+    sb.from("orders").select("id", { count: "exact", head: true }).eq("status", "completed").in("agent_pay_status", ["waiting", "approved"])]);
   data.waiting_agent_pay = ap.error ? 0 : ap.count || 0;
   const sr = await sb.from("sell_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
   data.pending_sells = sr.error ? 0 : sr.count || 0;
@@ -1954,7 +1954,7 @@ async function agentCache(force) {
   return AD.agentList;
 }
 function agentName(id) { const a = (AD.agentMap || {})[id]; return a ? `${esc(a.member_id)} · ${esc(a.full_name)}` : "deleted agent"; }
-const AGENT_PAY_LABEL = { waiting: ["pending", "waiting for you"], approved: ["tue", "approved · Tuesday"], paid: ["completed", "paid"], rejected: ["rejected", "not paid"] };
+const AGENT_PAY_LABEL = { waiting: ["pending", "to pay"], approved: ["pending", "to pay"], paid: ["completed", "paid"], rejected: ["rejected", "not paid"] };
 // next Tuesday payout (10:00 Nepal time)
 function nextTuesday() {
   const np = new Date(Date.now() + (5 * 60 + 45) * 60000), d = np.getUTCDay();
@@ -2382,50 +2382,79 @@ async function banners(v) {
   }));
 }
 
-/* ---------------- 📦 AGENT ORDERS (products delivered by an agent) ---------------- */
+/* ---------------- 📦 AGENT ORDERS: product deliveries. Admin pays the agent by hand (commission is separate) ---------------- */
 async function agentorders(v) {
   await agentCache();
-  if (!AD.aoF) AD.aoF = "waiting";
-  let q = sb.from("orders").select("*, profiles(full_name, member_id)").not("agent_id", "is", null).order("created_at", { ascending: false }).limit(500);
-  if (AD.aoF === "waiting") q = q.eq("agent_pay_status", "waiting");
+  if (!AD.aoF || !["topay", "todo", "paid", "rejected", "all"].includes(AD.aoF)) AD.aoF = "topay";
+  let q = sb.from("orders").select("*, profiles(full_name, member_id)").not("agent_id", "is", null).order("created_at", { ascending: false }).limit(1000);
+  if (AD.aoF === "topay") q = q.eq("status", "completed").in("agent_pay_status", ["waiting", "approved"]);
   else if (AD.aoF === "todo") q = q.eq("status", "pending");
-  else if (["approved", "paid", "rejected"].includes(AD.aoF)) q = q.eq("agent_pay_status", AD.aoF);
+  else if (AD.aoF === "paid" || AD.aoF === "rejected") q = q.eq("agent_pay_status", AD.aoF);
   if (AD.aoAgent) q = q.eq("agent_id", AD.aoAgent);
   const { data, error } = await q;
   if (error) throw error;
-  const sum = (k) => data.reduce((a, o) => a + Number(o[k] || 0), 0);
-  v.innerHTML = `<p class="muted small">Orders for products you gave to an agent (Products → Edit → “Who delivers this product”).
-      The customer's money was taken when they ordered. When the agent marks an order done it shows here as <b>waiting for you</b> —
-      check it, then <b>Approve</b>. Approved money is added to the agents' balance automatically every <b>Tuesday 10:00 AM</b> (next: ${nextTuesday()}).</p>
-    ${chips([["waiting", `Waiting for approval${AD.stats.waiting_agent_pay ? " (" + AD.stats.waiting_agent_pay + ")" : ""}`], ["todo", "Agent still delivering"], ["approved", "Approved (Tuesday)"], ["paid", "Paid"], ["rejected", "Not paid"], ["all", "All"]], AD.aoF, "aof")}
+  const head = `${chips([["topay", `To pay${AD.stats.waiting_agent_pay ? " (" + AD.stats.waiting_agent_pay + ")" : ""}`], ["todo", "Agent still delivering"], ["paid", "Paid"], ["rejected", "Not paid"], ["all", "All"]], AD.aoF, "aof")}
     <div class="toolbar"><select id="aoAg" style="max-width:320px"><option value="">All agents</option>
-      ${(AD.agentList || []).map((a) => `<option value="${a.id}" ${AD.aoAgent === a.id ? "selected" : ""}>${esc(a.member_id)} · ${esc(a.full_name)}</option>`).join("")}</select></div>
-    <div class="stats"><div class="stat"><div class="k">Orders</div><div class="v">${data.length}</div></div>
+      ${(AD.agentList || []).map((a) => `<option value="${a.id}" ${AD.aoAgent === a.id ? "selected" : ""}>${esc(a.member_id)} · ${esc(a.full_name)}</option>`).join("")}</select></div>`;
+  if (AD.aoF === "topay") {
+    // one card per agent: their delivered orders, total and a Pay button
+    const by = {};
+    data.forEach((o) => (by[o.agent_id] = by[o.agent_id] || []).push(o));
+    const ids = Object.keys(by);
+    v.innerHTML = head + (ids.length ? ids.map((ag) => {
+      const list = by[ag].sort((x, y) => new Date(x.agent_done_at || x.created_at) - new Date(y.agent_done_at || y.created_at));
+      const total = list.reduce((a, o) => a + Number(o.agent_pay || 0), 0);
+      return `<div class="card ap-card"><div class="row between"><h3 style="margin:0">${agentName(ag)}</h3><span class="muted small">${list.length} order${list.length === 1 ? "" : "s"}</span></div>
+        <div class="table-wrap mt"><table><thead><tr><th>#</th><th>Delivered</th><th>Product</th><th>Customer paid</th><th>Agent gets</th><th></th></tr></thead><tbody>
+        ${list.map((o) => `<tr><td>${o.id}</td><td class="small">${fmtDate(o.agent_done_at || o.updated_at)}</td>
+          <td><b>${esc(o.product_name)}</b> × ${o.quantity}${o.delivery_proof ? ` <a class="small" href="${esc(o.delivery_proof)}" target="_blank" rel="noopener">photo</a>` : ""}<div class="small muted">${who(o.profiles)}</div></td>
+          <td>${money(o.total)}</td>
+          <td><b style="color:var(--gold)">${money(o.agent_pay || 0)}</b>${o.agent_pay_note ? `<div class="small muted">${esc(o.agent_pay_note)}</div>` : ""}</td>
+          <td style="white-space:nowrap"><button class="btn sm soft" data-apadj="${o.id}">Adjust</button><button class="btn sm ghost" data-apno="${o.id}">Don't pay</button></td></tr>`).join("")}
+        </tbody><tfoot><tr><td colspan="4" style="text-align:right"><b>Total</b></td><td colspan="2"><b style="color:var(--gold);font-size:1.15rem">${money(total)}</b></td></tr></tfoot></table></div>
+        <button class="btn success block mt" data-appay="${ag}">Pay ${money(total)} to ${agentName(ag)}</button></div>`;
+    }).join("") : `<div class="card empty">No delivered orders to pay</div>`);
+  } else {
+    const sum = (k) => data.reduce((a, o) => a + Number(o[k] || 0), 0);
+    v.innerHTML = head + `<div class="stats"><div class="stat"><div class="k">Orders</div><div class="v">${data.length}</div></div>
       <div class="stat"><div class="k">Customers paid</div><div class="v">${money(sum("total"))}</div></div>
       <div class="stat"><div class="k">Agents get</div><div class="v">${money(sum("agent_pay"))}</div></div></div>
-    ${table(["#", "Date", "Product", "Customer", "Agent", "Customer paid", "Agent gets", "Status", ""], data.map((o) => `<tr>
-      <td>${o.id}</td><td class="small">${fmtDate(o.created_at)}${o.agent_done_at ? `<div class="muted">done ${fmtDate(o.agent_done_at)}</div>` : ""}</td>
+    ${table(["#", "Date", "Product", "Customer", "Agent", "Customer paid", "Agent gets", "Status"], data.map((o) => `<tr>
+      <td>${o.id}</td><td class="small">${fmtDate(o.created_at)}${o.agent_done_at ? `<div class="muted">done ${fmtDate(o.agent_done_at)}</div>` : ""}${o.agent_paid_at ? `<div class="muted">paid ${fmtDate(o.agent_paid_at)}</div>` : ""}</td>
       <td><b>${esc(o.product_name)}</b> × ${o.quantity}<div class="small">${formView(o.form_data)}</div></td>
       <td>${who(o.profiles)}</td><td class="small">${agentName(o.agent_id)}</td>
       <td><b>${money(o.total)}</b></td><td><b style="color:var(--gold)">${money(o.agent_pay || 0)}</b></td>
       <td><span class="badge ${o.status}">${o.status === "pending" ? "delivering" : o.status}</span> ${agentPayBadge(o)}
         ${o.refund_status === "requested" ? `<div><span class="badge requested">refund requested</span></div>` : ""}
         ${o.agent_pay_note ? `<div class="small muted">${esc(o.agent_pay_note)}</div>` : ""}</td>
-      <td style="white-space:nowrap">${o.agent_pay_status === "waiting" ? `<button class="btn sm success" data-apok="${o.id}">Approve</button><button class="btn sm ghost" data-apno="${o.id}">Reject</button>` : ""}</td>
-    </tr>`), AD.aoF === "waiting" ? "Nothing waiting for approval 🎉" : "No agent orders")}`;
+    </tr>`), "No agent orders")}`;
+  }
   $$("[data-aof]", v).forEach((c) => (c.onclick = () => { AD.aoF = c.dataset.aof; route(); }));
   $("#aoAg").onchange = (e) => { AD.aoAgent = e.target.value || null; route(); };
-  $$("[data-apok]", v).forEach((b) => (b.onclick = async () => {
-    const o = data.find((x) => x.id == b.dataset.apok);
-    if (!(await confirmBox(`Approve agent payment for order #${o.id}?`, `<b>${money(o.agent_pay)}</b> will be added to <b>${agentName(o.agent_id)}</b>'s balance on <b>${nextTuesday()}</b> (10:00 AM).<br>
-      <span class="small muted">${esc(o.product_name)} × ${o.quantity} · customer paid ${money(o.total)}</span>`, "Approve"))) return;
-    const { error: e } = await sb.rpc("admin_review_agent_pay", { p_order: o.id, p_approve: true, p_note: null });
-    if (e) return toast(errMsg(e), "error");
-    toast(`Approved — added to the agent on ${nextTuesday()}.`, "success"); refreshCounts(); route();
+  $$("[data-appay]", v).forEach((b) => (b.onclick = async () => {
+    const ag = b.dataset.appay, list = data.filter((o) => o.agent_id === ag), total = list.reduce((a, o) => a + Number(o.agent_pay || 0), 0);
+    if (!(await confirmBox(`Pay ${money(total)}?`, `<b>${money(total)}</b> for <b>${list.length}</b> delivered order${list.length === 1 ? "" : "s"} goes to <b>${agentName(ag)}</b>'s balance now.`, "Pay now"))) return;
+    busy(b, async () => {
+      const { data: r, error: er } = await sb.rpc("admin_pay_agent_orders", { p_agent: ag, p_orders: list.map((o) => o.id) });
+      if (er) throw er;
+      toast(`Paid ${money(r.total)} for ${r.orders} order${r.orders === 1 ? "" : "s"}.`, "success"); refreshCounts(); route();
+    });
+  }));
+  $$("[data-apadj]", v).forEach((b) => (b.onclick = () => {
+    const o = data.find((x) => x.id == b.dataset.apadj);
+    openModal(`<h2>Change amount · order #${o.id}</h2><p class="small muted">${esc(o.product_name)} × ${o.quantity} · customer paid ${money(o.total)}</p>
+      <form id="adjf"><label>Agent gets (${CFG.CURRENCY})</label><input type="number" name="amt" min="0" step="0.01" required value="${Number(o.agent_pay || 0)}">
+      <label>Reason (the agent sees it, optional)</label><input name="note" maxlength="200" value="${esc(o.agent_pay_note || "")}">
+      <button class="btn block mt">Save</button></form>`, (m) => {
+      $("#adjf", m).onsubmit = (e) => { e.preventDefault(); busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("admin_set_agent_pay", { p_order: o.id, p_amount: Number(e.target.amt.value), p_note: e.target.note.value.trim() || null });
+        if (er) throw er;
+        closeModal(); toast("Amount changed.", "success"); route();
+      }); };
+    });
   }));
   $$("[data-apno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Don't pay agent for order #${b.dataset.apno}</h2><form id="apnf">
     <label>Reason (the agent sees it)</label><input name="note" required maxlength="200" placeholder="e.g. Customer says it was not delivered">
-    <p class="small muted">The customer's order stays completed. If the customer should get their money back, refund the order on the Orders page.</p>
     <button class="btn danger block mt">Don't pay</button></form>`, (m) => {
     $("#apnf", m).onsubmit = (e) => {
       e.preventDefault();
@@ -3637,7 +3666,8 @@ async function payoutcheck(v) {
       <td class="small">${fmtDate(w.completed_at)}</td><td class="mono">${esc(w.code)}</td><td><b>${money(w.amount)}</b></td>
       <td>${person(w.customer)}</td><td>${person(w.agent)}</td>
       <td>${w.customer_paid == null ? `<span class="badge pending">no answer</span>` : w.customer_paid ? `<span class="badge completed">Yes</span>` : `<span class="badge rejected">No — not paid</span>`}
-        ${w.paid_answer_at ? `<div class="small muted">${fmtDate(w.paid_answer_at)}</div>` : ""}</td></tr>`), AD.pcF === "no" ? "No complaints" : "Nothing here");
+        ${w.paid_answer_at ? `<div class="small muted">${fmtDate(w.paid_answer_at)}</div>` : ""}
+        ${Number(w.not_yet_count) > 0 ? `<div class="small" style="color:var(--orange)">"Not yet" × ${w.not_yet_count}${w.not_yet_at ? " · last " + fmtDate(w.not_yet_at) : ""}</div>` : ""}</td></tr>`), AD.pcF === "no" ? "No complaints" : "Nothing here");
   $$("[data-pcf]", v).forEach((c) => (c.onclick = () => { AD.pcF = c.dataset.pcf; route(); }));
 }
 
