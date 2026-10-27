@@ -2,6 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayectzhcjtlkehhkaqau.supabase.co wss://ayectzhcjtlkehhkaqau.supabase.co https://challenges.cloudflare.com https://cdn.jsdelivr.net; frame-src https://challenges.cloudflare.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#060b1a">
 <link rel="icon" href="icon-192.png">
@@ -15,6 +16,7 @@ function pvFatal(m){var r=document.getElementById('root');if(!r)return;r.innerHT
 window.addEventListener('error',function(e){if(e.message&&!window.pvDead)pvFatal(e.message+' — '+String(e.filename||'').split('/').pop()+' line '+e.lineno);},true);
 window.addEventListener('unhandledrejection',function(e){var m=(e.reason&&e.reason.message)||String(e.reason);var net=!navigator.onLine||/fetch|network|load failed/i.test(m);if(net){if(!document.querySelector('#root .card, #root .app, #root .panel, #root .auth-wrap'))pvOffline();return;}if(!document.querySelector('#root .card, #root .app, #root .panel'))pvFatal(m);});
 </script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <style>
 /* ============ PREMVIO — shared styles ============ */
 :root {
@@ -1148,7 +1150,7 @@ function errMsg(e) {
   if (/already registered/i.test(m)) return "This email is already registered. Please log in.";
   if (/not authorized|sending confirmation|Error sending/i.test(m)) return "Sign-up email could not be sent. (Owner: in Supabase → Authentication → Sign In / Providers → Email, turn OFF \"Confirm email\".)";
   if (/email.*invalid|invalid.*email|validate email/i.test(m)) return "This email address was rejected. Use a real address like name@gmail.com. (Owner: in Supabase turn OFF \"Confirm email\" if this keeps happening.)";
-  if (/rate limit|too many/i.test(m)) return "Too many attempts. Please wait a few minutes and try again.";
+  if (/rate limit|too many/i.test(m) && !/try again in \d+ minute/i.test(m)) return "Too many attempts. Please wait a few minutes and try again.";
   if (/Database error/i.test(m)) return "Login database error — run 4-fix-admin-login.sql in Supabase. (" + m + ")";
   if (/Failed to fetch|Load failed|NetworkError|network request failed/i.test(m) || (typeof navigator !== "undefined" && navigator.onLine === false)) return "No internet connection";
   return m.replace(/^.*?ERROR:\s*/, "");
@@ -1301,19 +1303,21 @@ function staffLogin(container, roleLabel, allowed, onOk) {
       <form id="slForm">
         <label>${esc(roleLabel)} ID</label><input name="email" required autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase">
         <label>Password</label><input type="password" name="password" required autocomplete="off">
-        <label>Security check</label><div id="slCap"></div>
+        <div id="slCap" class="ts-box"></div>
         <button class="btn block mt">Log in</button>
       </form>
     </div>
   </div></div>`;
-  const cap = mountCaptcha($("#slCap", container));
+  const cap = humanCheck($("#slCap", container), true);
   $("#slForm", container).onsubmit = (e) => {
     e.preventDefault();
     const f = e.target;
-    if (!cap.ok()) { toast("Wrong captcha answer.", "error"); cap.reset(); return; }
+    if (!cap.ready()) return;
     busy($("button.btn", f), async () => {
-      const { error } = await sb.auth.signInWithPassword({ email: staffEmail(f.email.value), password: f.password.value });
-      if (error) { cap.reset(); if (/Invalid login/i.test(error.message)) throw new Error("Wrong ID or password."); throw error; }
+      const email = staffEmail(f.email.value), password = f.password.value;
+      try { await loginGate(email, password, cap.token(), "Wrong ID or password."); } finally { cap.reset(); }
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { if (/Invalid login/i.test(error.message)) throw new Error("Wrong ID or password."); throw error; }
       const p = await getMyProfile();
       if (!p || !allowed.includes(p.role) || p.blocked) {
         await pvSignOut();
@@ -1525,6 +1529,116 @@ function staffBubble(m, custName) {
     : `<div class="who">${esc(custName || "Customer")}</div>`}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`;
 }
 
+
+/* ---------- 🛡️ safety (V59) ---------- */
+// Cloudflare "I am human" box (Turnstile). Falls back to the small math check if Turnstile is off.
+let PV_TSW = null;
+function mountTurnstile(box, onFail) {
+  let tok = null, tries = 0;
+  const key = CFG.TURNSTILE_SITE_KEY;
+  if (!key) return { token: () => "off", reset() {} };
+  const T = () => window.turnstile;
+  const fail = (msg) => {
+    if (!document.body.contains(box)) return;
+    if (onFail) { onFail(); return; }
+    box.innerHTML = `<div class="ts-fail"><span>${esc(msg)}</span><button type="button" class="btn sm soft" id="tsRetry">Try again</button></div>`;
+    $("#tsRetry", box).onclick = () => { tries = 0; draw(); };
+  };
+  const draw = () => {
+    if (!document.body.contains(box)) return;
+    if (!T()) {
+      if (++tries > 60) return fail("Security check did not load. Check your internet.");
+      return setTimeout(draw, 250);
+    }
+    try { if (PV_TSW != null) T().remove(PV_TSW); } catch (e) {}
+    PV_TSW = null; tok = null;
+    box.innerHTML = "";
+    const holder = document.createElement("div");
+    box.appendChild(holder);
+    try {
+      PV_TSW = T().render(holder, {
+        sitekey: key, size: "flexible", appearance: "always", retry: "auto", "refresh-expired": "auto",
+        theme: document.documentElement.dataset.theme === "light" ? "light" : "dark",
+        callback: (t) => { tok = t; },
+        "expired-callback": () => { tok = null; },
+        "error-callback": (code) => { tok = null; fail("Security check error" + (code ? " (" + code + ")" : "") + "."); return true; },
+      });
+    } catch (e) { fail("Security check error."); }
+  };
+  draw();
+  return { token: () => tok, reset() { tok = null; try { if (PV_TSW != null) T().reset(PV_TSW); else draw(); } catch (e) { draw(); } } };
+}
+
+
+// staff = true: if Cloudflare can't load on this site, use the small math check instead (staff can always log in)
+function humanCheck(box, staff) {
+  let cur = null;
+  const math = () => {
+    box.innerHTML = ""; box.classList.remove("ts-box");
+    if (!box.previousElementSibling?.classList?.contains("cap-lbl")) box.insertAdjacentHTML("beforebegin", `<label class="cap-lbl">Security check</label>`);
+    const cap = mountCaptcha(box);
+    cur = { token: () => null, reset: () => cap.reset(), ready() { if (!cap.ok()) { toast("Wrong captcha answer.", "error"); cap.reset(); return false; } return true; } };
+  };
+  if (CFG.TURNSTILE_SITE_KEY && (window.turnstile || document.querySelector('script[src*="challenges.cloudflare.com"]'))) {
+    const ts = mountTurnstile(box, staff ? math : null);
+    cur = { token: () => ts.token(), reset: () => ts.reset(),
+      ready() { if (!ts.token()) { toast("Please complete the “I am human” check.", "error"); return false; } return true; } };
+  } else math();
+  return { token: () => cur.token(), reset: () => cur.reset(), ready: () => cur.ready() };
+}
+// Checks the lock (5 wrong passwords = 15 minutes) before signing in. Throws a friendly error.
+async function loginGate(email, password, captcha, wrongMsg = "Wrong email or password.") {
+  const { data, error } = await sb.rpc("login_check", { p_email: email, p_password: password, p_captcha: captcha || null });
+  if (error) { if (/login_check|PGRST202|function/i.test(error.message || "") && !isNetErr(error)) return; throw error; }   // update not installed yet → normal login
+  if (data?.ok) return;
+  if (data?.locked) throw new Error(`Too many wrong tries. Please try again in ${data.locked} minute${data.locked == 1 ? "" : "s"}.`);
+  if (data?.captcha) throw new Error("The “I am human” check failed. Please try again.");
+  throw new Error(wrongMsg + (data?.left != null && data.left <= 3 ? ` ${data.left} ${data.left == 1 ? "try" : "tries"} left.` : ""));
+}
+// new device → alert (customers get it themselves, staff logins also alert every admin)
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iPod/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "Mac" : /Linux/i.test(ua) ? "Linux" : "device";
+  const br = /Edg\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  return `${isStandalone() ? "Premvio app" : br} on ${os}`;
+}
+async function registerDevice() {
+  let id = null;
+  try { id = localStorage.getItem("pv_device"); if (!id) { id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem("pv_device", id); } } catch (e) { return; }
+  sb.rpc("register_device", { p_device: id, p_label: deviceLabel() }).then(() => {}, () => {});
+}
+// Admin panel: log out after N minutes without any tap or key press (all tabs together)
+function idleLogout(minutes) {
+  const KEY = "pv_last_act", mark = () => { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} };
+  mark();
+  let last = 0;
+  ["pointerdown", "keydown", "scroll", "touchstart"].forEach((ev) => addEventListener(ev, () => { if (Date.now() - last > 5000) { last = Date.now(); mark(); } }, { passive: true }));
+  setInterval(async () => {
+    let t = Date.now(); try { t = Number(localStorage.getItem(KEY)) || Date.now(); } catch (e) {}
+    if (Date.now() - t > minutes * 60000) {
+      try { sessionStorage.setItem("pv_idle_out", "1"); } catch (e) {}
+      await pvSignOut(); location.hash = ""; location.reload();
+    }
+  }, 30000);
+}
+function idleNotice() {
+  try { if (sessionStorage.getItem("pv_idle_out")) { sessionStorage.removeItem("pv_idle_out"); setTimeout(() => toast("Logged out after 15 minutes without activity.", "error"), 300); } } catch (e) {}
+}
+// "Log out all other devices" button (staff panels)
+function outOthersHtml() { return `<button class="btn danger block mt" id="outOthers">Log out all other devices</button>`; }
+function bindOutOthers(scope) {
+  const b = $("#outOthers", scope || document);
+  if (!b) return;
+  b.onclick = async () => {
+    if (!(await confirmBox("Log out all other devices?", "Every other phone or computer using this ID is logged out. This device stays logged in.", "Log out others", true))) return;
+    busy(b, async () => {
+      const { error } = await sb.auth.signOut({ scope: "others" });
+      if (error) throw error;
+      toast("All other devices are logged out.", "success");
+    });
+  };
+}
+
 </script>
 <script>
 /* ============ PREMVIO — Admin panel (v2) ============ */
@@ -1672,6 +1786,9 @@ function start(p) {
   if (pushSupported() && Notification.permission === "granted") enablePush(true);
   refreshCounts();
   route();
+  registerDevice();
+  idleLogout(15);   // 15 minutes without any tap → logged out
+  idleNotice();
 }
 
 function currentSection() {
@@ -3207,6 +3324,7 @@ async function personView(v, id, back) {
         <button class="btn sm soft" id="role">Change role</button>
         ${u.role === "agent" ? `<button class="btn sm soft" id="comm">💰 Commission ${Number(u.commission_load || 0)}%</button><a class="btn sm soft" href="#agentcomm/${u.id}">Commission details</a>` : ""}
         ${u.role === "admin" && u.id !== AD.me.id ? `<button class="btn sm soft" id="mfaReset">Reset two-step login</button>` : ""}` : ""}
+      <button class="btn sm soft" id="unlock">Unlock login</button>
       ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>
         <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}
     </div>
@@ -3259,6 +3377,11 @@ async function personView(v, id, back) {
     };
   });
   if ($("#comm")) $("#comm").onclick = () => commissionModal(u, reload);
+  if ($("#unlock")) $("#unlock").onclick = () => busy($("#unlock"), async () => {
+    const { error } = await sb.rpc("admin_unlock_login", { p_user: id });
+    if (error) throw error;
+    toast("Login unlocked — they can try again now.", "success");
+  });
   if ($("#role")) $("#role").onclick = () => openModal(`<h2>Change role of ${esc(u.member_id)}</h2><form id="rf">
       <label>New role</label><select name="r">${Object.entries(STAFF_ROLES).map(([k, x]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${x.label}</option>`).join("")}</select>
       <p class="small muted" id="rHint"></p><button class="btn block mt">Change role</button></form>`, (m) => {
@@ -3355,13 +3478,30 @@ async function withdrawals(v) {
   const { data, error } = await q;
   if (error) throw error;
   v.innerHTML = `<p class="muted small">Customers' withdrawal codes are paid out by agents. Unused codes refund automatically when they expire.</p>` +
-    chips([["pending", "Active"], ["completed", "Completed"], ["expired", "Expired"], ["cancelled", "Cancelled"], ["all", "All"]], AD.wdFilter, "wf") +
+    chips([["review", "Waiting for approval"], ["pending", "Active"], ["completed", "Completed"], ["expired", "Expired"], ["cancelled", "Cancelled"], ["all", "All"]], AD.wdFilter, "wf") +
     table(["Code", "Customer", "Amount", "Location", "Created", "Expires / done", "Paid by agent", "Status"], data.map((w) => `<tr>
       <td class="mono"><b>${esc(w.code)}</b></td><td>${who(w.customer)}</td><td><b>${money(w.amount)}</b></td>
       <td class="small">${esc(w.city)}, ${esc(w.street)}</td><td class="small">${fmtDate(w.created_at)}</td>
       <td class="small">${w.status === "pending" ? timeLeft(w.expires_at) : w.completed_at ? fmtDate(w.completed_at) : fmtDate(w.expires_at)}</td>
-      <td>${w.agent ? who(w.agent) : "—"}</td><td><span class="badge ${w.status}">${w.status}</span></td></tr>`), "No withdrawal codes");
+      <td>${w.agent ? who(w.agent) : "—"}</td><td>${w.status === "review" ? `<span class="badge pending">waiting for you</span>
+        <div class="row mt" style="gap:4px;flex-wrap:nowrap"><button class="btn sm success" data-wok="${w.id}">Approve</button><button class="btn sm ghost" data-wno="${w.id}">Reject</button></div>`
+        : `<span class="badge ${w.status}">${w.status}</span>`}</td></tr>`), "No withdrawal codes");
   $$("[data-wf]", v).forEach((c) => (c.onclick = () => { AD.wdFilter = c.dataset.wf; route(); }));
+  $$("[data-wok]", v).forEach((b) => (b.onclick = async () => {
+    const w = data.find((x) => x.id == b.dataset.wok);
+    if (!(await confirmBox(`Approve NPR ${w.amount}?`, `${esc(w.customer?.full_name || "")} (${esc(w.customer?.member_id || "")}) can then take the cash from an agent.`, "Approve"))) return;
+    const { error: er } = await sb.rpc("admin_review_withdrawal", { p_id: w.id, p_approve: true, p_note: null });
+    if (er) return toast(errMsg(er), "error");
+    toast("Approved — the code works now.", "success"); refreshCounts(); route();
+  }));
+  $$("[data-wno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject withdrawal</h2><form id="wnf"><label>Reason for the customer</label>
+      <input name="note" required maxlength="200"><button class="btn danger block mt">Reject &amp; refund</button></form>`, (m) => {
+    $("#wnf", m).onsubmit = (e) => { e.preventDefault(); busy($("button", e.target), async () => {
+      const { error: er } = await sb.rpc("admin_review_withdrawal", { p_id: Number(b.dataset.wno), p_approve: false, p_note: e.target.note.value.trim() });
+      if (er) throw er;
+      closeModal(); toast("Rejected — money returned to the customer.", "success"); refreshCounts(); route();
+    }); };
+  })));
 }
 
 /* ---------------- TRANSACTIONS ---------------- */
@@ -3461,9 +3601,13 @@ async function settings(v) {
     <div class="grid-2"><div><label>Minimum withdrawal (${CFG.CURRENCY})</label><input type="number" name="min_withdraw" min="0" value="${esc(s.min_withdraw || 100)}"></div>
     <div><label>Maximum withdrawal (${CFG.CURRENCY})</label><input type="number" name="max_withdraw" min="0" value="${esc(s.max_withdraw || 100000)}"></div></div>
     <label>Withdrawal code valid for (hours)</label><input type="number" name="withdraw_hours" min="1" max="168" value="${esc(s.withdraw_hours || 24)}">
+    <div class="grid-2"><div><label>Withdrawals from this amount wait for your approval (${CFG.CURRENCY}, 0 = off)</label><input type="number" name="wd_hold_amount" min="0" value="${esc(s.wd_hold_amount || 0)}"></div>
+    <div><label>Daily withdraw limit per customer (${CFG.CURRENCY}, 0 = no limit)</label><input type="number" name="wd_daily_limit" min="0" value="${esc(s.wd_daily_limit || 0)}"></div></div>
     <button class="btn block mt">Save settings</button></form></div>
     <div class="card" style="max-width:620px"><h3>Your account</h3>
-      <p class="small">You are <b>${esc(AD.me.member_id)}</b> (${esc(AD.me.full_name)}). Another admin can reset your password from Agents &amp; admins.</p></div>`;
+      <p class="small">You are <b>${esc(AD.me.member_id)}</b> (${esc(AD.me.full_name)}). Another admin can reset your password from Agents &amp; admins.</p>
+      ${outOthersHtml()}</div>`;
+  bindOutOthers(v);
   $("#rwf").onsubmit = (e) => {
     e.preventDefault();
     const f = e.target, num = (n) => String(Math.max(0, Number(f[n].value) || 0));
@@ -3498,7 +3642,8 @@ async function settings(v) {
     const f = e.target;
     let tg = f.telegram_username.value.trim();
     if (!tg.startsWith("@")) tg = "@" + tg;
-    const rows = [["telegram_username", tg], ["min_withdraw", f.min_withdraw.value], ["max_withdraw", f.max_withdraw.value], ["withdraw_hours", f.withdraw_hours.value]]
+    const rows = [["telegram_username", tg], ["min_withdraw", f.min_withdraw.value], ["max_withdraw", f.max_withdraw.value], ["withdraw_hours", f.withdraw_hours.value],
+      ["wd_hold_amount", String(Math.max(0, Number(f.wd_hold_amount.value) || 0))], ["wd_daily_limit", String(Math.max(0, Number(f.wd_daily_limit.value) || 0))]]
       .map(([key, value]) => ({ key, value: String(value) }));
     busy($("button", f), async () => {
       const { error } = await sb.from("app_settings").upsert(rows);

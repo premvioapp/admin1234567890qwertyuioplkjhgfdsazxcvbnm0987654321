@@ -2,6 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://ayectzhcjtlkehhkaqau.supabase.co wss://ayectzhcjtlkehhkaqau.supabase.co https://challenges.cloudflare.com https://cdn.jsdelivr.net; frame-src https://challenges.cloudflare.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#060b1a">
 <link rel="icon" href="icon-192.png">
@@ -15,6 +16,7 @@ function pvFatal(m){var r=document.getElementById('root');if(!r)return;r.innerHT
 window.addEventListener('error',function(e){if(e.message&&!window.pvDead)pvFatal(e.message+' — '+String(e.filename||'').split('/').pop()+' line '+e.lineno);},true);
 window.addEventListener('unhandledrejection',function(e){var m=(e.reason&&e.reason.message)||String(e.reason);var net=!navigator.onLine||/fetch|network|load failed/i.test(m);if(net){if(!document.querySelector('#root .card, #root .app, #root .panel, #root .auth-wrap'))pvOffline();return;}if(!document.querySelector('#root .card, #root .app, #root .panel'))pvFatal(m);});
 </script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <style>
 /* ============ PREMVIO — shared styles ============ */
 :root {
@@ -1038,6 +1040,18 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; d
 .bubble.me.auto .who, .bubble.me .who { color: rgba(255,255,255,.85); }
 .wa-sys { align-self: center; margin: 6px auto; font-size: .75rem; color: var(--muted); background: var(--card-2); padding: 4px 10px; border-radius: 999px; text-align: center; }
 @media (max-width: 860px) { .sp-two { grid-template-columns: 1fr; } }
+/* V58 delivery */
+.dl-box { margin-top: 14px; padding: 12px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--line); }
+.dl-box label:first-of-type { margin-top: 6px; }
+.dl-title { display: flex; align-items: center; gap: 8px; }
+.dl-title svg { width: 18px; height: 18px; color: var(--blue); }
+.dl-save { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; margin-top: 10px; }
+.dl-save input { width: auto; margin: 0; }
+.dl-steps { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.dl-steps span { font-size: .72rem; padding: 3px 8px; border-radius: 999px; background: var(--card-2); color: var(--muted); }
+.dl-steps span.on { background: rgba(34, 201, 131, .16); color: var(--green); font-weight: 700; }
+.dl-admin { margin-top: 6px; padding: 8px; border-radius: 10px; background: var(--card-2); line-height: 1.45; }
+.dl-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 
 </style>
 <title>Premvio Support</title>
@@ -1136,7 +1150,7 @@ function errMsg(e) {
   if (/already registered/i.test(m)) return "This email is already registered. Please log in.";
   if (/not authorized|sending confirmation|Error sending/i.test(m)) return "Sign-up email could not be sent. (Owner: in Supabase → Authentication → Sign In / Providers → Email, turn OFF \"Confirm email\".)";
   if (/email.*invalid|invalid.*email|validate email/i.test(m)) return "This email address was rejected. Use a real address like name@gmail.com. (Owner: in Supabase turn OFF \"Confirm email\" if this keeps happening.)";
-  if (/rate limit|too many/i.test(m)) return "Too many attempts. Please wait a few minutes and try again.";
+  if (/rate limit|too many/i.test(m) && !/try again in \d+ minute/i.test(m)) return "Too many attempts. Please wait a few minutes and try again.";
   if (/Database error/i.test(m)) return "Login database error — run 4-fix-admin-login.sql in Supabase. (" + m + ")";
   if (/Failed to fetch|Load failed|NetworkError|network request failed/i.test(m) || (typeof navigator !== "undefined" && navigator.onLine === false)) return "No internet connection";
   return m.replace(/^.*?ERROR:\s*/, "");
@@ -1289,19 +1303,21 @@ function staffLogin(container, roleLabel, allowed, onOk) {
       <form id="slForm">
         <label>${esc(roleLabel)} ID</label><input name="email" required autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase">
         <label>Password</label><input type="password" name="password" required autocomplete="off">
-        <label>Security check</label><div id="slCap"></div>
+        <div id="slCap" class="ts-box"></div>
         <button class="btn block mt">Log in</button>
       </form>
     </div>
   </div></div>`;
-  const cap = mountCaptcha($("#slCap", container));
+  const cap = humanCheck($("#slCap", container), true);
   $("#slForm", container).onsubmit = (e) => {
     e.preventDefault();
     const f = e.target;
-    if (!cap.ok()) { toast("Wrong captcha answer.", "error"); cap.reset(); return; }
+    if (!cap.ready()) return;
     busy($("button.btn", f), async () => {
-      const { error } = await sb.auth.signInWithPassword({ email: staffEmail(f.email.value), password: f.password.value });
-      if (error) { cap.reset(); if (/Invalid login/i.test(error.message)) throw new Error("Wrong ID or password."); throw error; }
+      const email = staffEmail(f.email.value), password = f.password.value;
+      try { await loginGate(email, password, cap.token(), "Wrong ID or password."); } finally { cap.reset(); }
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { if (/Invalid login/i.test(error.message)) throw new Error("Wrong ID or password."); throw error; }
       const p = await getMyProfile();
       if (!p || !allowed.includes(p.role) || p.blocked) {
         await pvSignOut();
@@ -1513,6 +1529,116 @@ function staffBubble(m, custName) {
     : `<div class="who">${esc(custName || "Customer")}</div>`}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`;
 }
 
+
+/* ---------- 🛡️ safety (V59) ---------- */
+// Cloudflare "I am human" box (Turnstile). Falls back to the small math check if Turnstile is off.
+let PV_TSW = null;
+function mountTurnstile(box, onFail) {
+  let tok = null, tries = 0;
+  const key = CFG.TURNSTILE_SITE_KEY;
+  if (!key) return { token: () => "off", reset() {} };
+  const T = () => window.turnstile;
+  const fail = (msg) => {
+    if (!document.body.contains(box)) return;
+    if (onFail) { onFail(); return; }
+    box.innerHTML = `<div class="ts-fail"><span>${esc(msg)}</span><button type="button" class="btn sm soft" id="tsRetry">Try again</button></div>`;
+    $("#tsRetry", box).onclick = () => { tries = 0; draw(); };
+  };
+  const draw = () => {
+    if (!document.body.contains(box)) return;
+    if (!T()) {
+      if (++tries > 60) return fail("Security check did not load. Check your internet.");
+      return setTimeout(draw, 250);
+    }
+    try { if (PV_TSW != null) T().remove(PV_TSW); } catch (e) {}
+    PV_TSW = null; tok = null;
+    box.innerHTML = "";
+    const holder = document.createElement("div");
+    box.appendChild(holder);
+    try {
+      PV_TSW = T().render(holder, {
+        sitekey: key, size: "flexible", appearance: "always", retry: "auto", "refresh-expired": "auto",
+        theme: document.documentElement.dataset.theme === "light" ? "light" : "dark",
+        callback: (t) => { tok = t; },
+        "expired-callback": () => { tok = null; },
+        "error-callback": (code) => { tok = null; fail("Security check error" + (code ? " (" + code + ")" : "") + "."); return true; },
+      });
+    } catch (e) { fail("Security check error."); }
+  };
+  draw();
+  return { token: () => tok, reset() { tok = null; try { if (PV_TSW != null) T().reset(PV_TSW); else draw(); } catch (e) { draw(); } } };
+}
+
+
+// staff = true: if Cloudflare can't load on this site, use the small math check instead (staff can always log in)
+function humanCheck(box, staff) {
+  let cur = null;
+  const math = () => {
+    box.innerHTML = ""; box.classList.remove("ts-box");
+    if (!box.previousElementSibling?.classList?.contains("cap-lbl")) box.insertAdjacentHTML("beforebegin", `<label class="cap-lbl">Security check</label>`);
+    const cap = mountCaptcha(box);
+    cur = { token: () => null, reset: () => cap.reset(), ready() { if (!cap.ok()) { toast("Wrong captcha answer.", "error"); cap.reset(); return false; } return true; } };
+  };
+  if (CFG.TURNSTILE_SITE_KEY && (window.turnstile || document.querySelector('script[src*="challenges.cloudflare.com"]'))) {
+    const ts = mountTurnstile(box, staff ? math : null);
+    cur = { token: () => ts.token(), reset: () => ts.reset(),
+      ready() { if (!ts.token()) { toast("Please complete the “I am human” check.", "error"); return false; } return true; } };
+  } else math();
+  return { token: () => cur.token(), reset: () => cur.reset(), ready: () => cur.ready() };
+}
+// Checks the lock (5 wrong passwords = 15 minutes) before signing in. Throws a friendly error.
+async function loginGate(email, password, captcha, wrongMsg = "Wrong email or password.") {
+  const { data, error } = await sb.rpc("login_check", { p_email: email, p_password: password, p_captcha: captcha || null });
+  if (error) { if (/login_check|PGRST202|function/i.test(error.message || "") && !isNetErr(error)) return; throw error; }   // update not installed yet → normal login
+  if (data?.ok) return;
+  if (data?.locked) throw new Error(`Too many wrong tries. Please try again in ${data.locked} minute${data.locked == 1 ? "" : "s"}.`);
+  if (data?.captcha) throw new Error("The “I am human” check failed. Please try again.");
+  throw new Error(wrongMsg + (data?.left != null && data.left <= 3 ? ` ${data.left} ${data.left == 1 ? "try" : "tries"} left.` : ""));
+}
+// new device → alert (customers get it themselves, staff logins also alert every admin)
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iPod/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "Mac" : /Linux/i.test(ua) ? "Linux" : "device";
+  const br = /Edg\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  return `${isStandalone() ? "Premvio app" : br} on ${os}`;
+}
+async function registerDevice() {
+  let id = null;
+  try { id = localStorage.getItem("pv_device"); if (!id) { id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem("pv_device", id); } } catch (e) { return; }
+  sb.rpc("register_device", { p_device: id, p_label: deviceLabel() }).then(() => {}, () => {});
+}
+// Admin panel: log out after N minutes without any tap or key press (all tabs together)
+function idleLogout(minutes) {
+  const KEY = "pv_last_act", mark = () => { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} };
+  mark();
+  let last = 0;
+  ["pointerdown", "keydown", "scroll", "touchstart"].forEach((ev) => addEventListener(ev, () => { if (Date.now() - last > 5000) { last = Date.now(); mark(); } }, { passive: true }));
+  setInterval(async () => {
+    let t = Date.now(); try { t = Number(localStorage.getItem(KEY)) || Date.now(); } catch (e) {}
+    if (Date.now() - t > minutes * 60000) {
+      try { sessionStorage.setItem("pv_idle_out", "1"); } catch (e) {}
+      await pvSignOut(); location.hash = ""; location.reload();
+    }
+  }, 30000);
+}
+function idleNotice() {
+  try { if (sessionStorage.getItem("pv_idle_out")) { sessionStorage.removeItem("pv_idle_out"); setTimeout(() => toast("Logged out after 15 minutes without activity.", "error"), 300); } } catch (e) {}
+}
+// "Log out all other devices" button (staff panels)
+function outOthersHtml() { return `<button class="btn danger block mt" id="outOthers">Log out all other devices</button>`; }
+function bindOutOthers(scope) {
+  const b = $("#outOthers", scope || document);
+  if (!b) return;
+  b.onclick = async () => {
+    if (!(await confirmBox("Log out all other devices?", "Every other phone or computer using this ID is logged out. This device stays logged in.", "Log out others", true))) return;
+    busy(b, async () => {
+      const { error } = await sb.auth.signOut({ scope: "others" });
+      if (error) throw error;
+      toast("All other devices are logged out.", "success");
+    });
+  };
+}
+
 </script>
 <script>
 /* ============ PREMVIO — Support panel ============
@@ -1569,6 +1695,7 @@ function start(p) {
     if (section() === "chats" && !hashArg()) { clearTimeout(SP.t); SP.t = setTimeout(route, 400); }
   }).subscribe();
   if (pushSupported() && Notification.permission === "granted") enablePush(true);
+  registerDevice();
 }
 
 function hashArg() { return (location.hash.slice(1).split("/")[1] || ""); }
@@ -1701,7 +1828,8 @@ async function profile(v) {
       <label>New password</label><input type="password" name="n1" required minlength="6" autocomplete="new-password">
       <label>Repeat new password</label><input type="password" name="n2" required minlength="6" autocomplete="new-password">
       <button class="btn block mt">Change password</button>
-    </form></div>`;
+    </form>${outOthersHtml()}</div>`;
+  bindOutOthers();
   $("#pwf").onsubmit = (e) => {
     e.preventDefault();
     const f = e.target;
