@@ -3369,18 +3369,20 @@ async function agents(v) {
 }
 // 💰 set one agent's commission % (only on money customers spend on delivered orders; paid monthly by admin)
 function commissionModal(u, after) {
-  openModal(`<h2>💰 Commission for ${esc(u.member_id)}</h2><p class="small muted">${esc(u.full_name)} — the agent does not see this. You pay it monthly on the <b>Agent commission</b> page.</p>
-    <form id="cmf"><label>% of what their customers spend on delivered orders</label>
-      <input type="number" name="l" min="0" max="20" step="0.01" value="${Number(u.commission_load || 0)}">
+  openModal(`<h2>Commission for ${esc(u.member_id)}</h2><p class="small muted">${esc(u.full_name)} — the agent does not see this. You pay it monthly on the <b>Agent commission</b> page.</p>
+    <form id="cmf"><div class="grid-2">
+      <div><label>Deposits % <span class="muted">(when the customer buys)</span></label><input type="number" name="l" min="0" max="20" step="0.01" value="${Number(u.commission_load || 0)}"></div>
+      <div><label>Withdrawals %</label><input type="number" name="w" min="0" max="20" step="0.01" value="${Number(u.commission_payout || 0)}"></div></div>
       <div class="pm-info mt" id="cmEx"></div>
       <button class="btn block mt">Save commission</button></form>`, (m) => {
-    const f = $("#cmf", m), ex = () => ($("#cmEx", m).innerHTML = `Agent tops up ${money(1000)} for a customer → customer buys ${money(600)} and the order is delivered → agent earns <b>${money(6 * (Number(f.l.value) || 0))}</b>.<br>
-      If the customer withdraws the money instead of buying, the commission is <b>cut</b>. Refunded orders take it back. No commission on withdrawals. Use 0 for no commission.`);
+    const f = $("#cmf", m), ex = () => ($("#cmEx", m).innerHTML = `Deposit ${money(1000)} → customer buys ${money(600)} (delivered) → agent earns <b>${money(6 * (Number(f.l.value) || 0))}</b>.<br>
+      Pays out a withdrawal of ${money(1000)} → agent earns <b>${money(10 * (Number(f.w.value) || 0))}</b>. If the customer says “Not paid”, it is taken back.<br>
+      Deposits and withdrawals for the <b>same customer more than 3 times in one day</b> → all commission from that customer that month is cut.`);
     f.oninput = ex; ex();
     f.onsubmit = (e) => {
       e.preventDefault();
       busy($("button", f), async () => {
-        const { error } = await sb.rpc("admin_set_commission", { p_user: u.id, p_load: Number(f.l.value) || 0, p_payout: 0 });
+        const { error } = await sb.rpc("admin_set_commission", { p_user: u.id, p_load: Number(f.l.value) || 0, p_payout: Number(f.w.value) || 0 });
         if (error) throw error;
         closeModal(); toast("Commission saved.", "success"); after && after();
       });
@@ -3401,26 +3403,25 @@ async function agentcomm(v) {
   const { data, error } = await sb.rpc("admin_commission_overview", { p_from: a, p_to: b });
   if (error) throw error;
   const tot = (k) => data.reduce((x, d) => x + Number(d[k] || 0), 0);
-  v.innerHTML = `<p class="muted small">Agents earn commission only when a customer they topped up <b>spends</b> that money on an order you mark <b>delivered</b>.
-      Money withdrawn without buying is <b>cut</b>. Agents don't see any of this. Pay what they are owed once a month.</p>
-    ${chips([0, 1, 2, 3, 4, 5].map((i) => [String(i), monthRange(i).label]), String(AD.acMonth), "acm")}
-    <div class="stats"><div class="stat"><div class="k">Earned in ${esc(r.label)}</div><div class="v amt-pos">${money(tot("earned"))}</div></div>
-      <div class="stat"><div class="k">Cut (no purchase)</div><div class="v amt-neg">${money(tot("cut"))}</div></div>
-      <div class="stat"><div class="k">Taken back (refunds)</div><div class="v amt-neg">${money(tot("reversed"))}</div></div>
-      <div class="stat"><div class="k">Owed now (all agents)</div><div class="v" style="color:var(--gold)">${money(tot("owed"))}</div></div></div>
-    ${table(["Agent", "Rate", `Earned`, "Cut", "Taken back", "Paid", "Owed now", "Waiting*", "Last paid", ""], data.map((d) => `<tr>
-      <td>${who(d)}</td><td>${Number(d.rate) ? Number(d.rate) + "%" : `<span class="muted">0%</span>`}</td>
-      <td class="amt-pos">${money(d.earned)}</td><td class="amt-neg">${Number(d.cut) ? "−" + money(d.cut) : "—"}</td>
+  v.innerHTML = `${chips([0, 1, 2, 3, 4, 5].map((i) => [String(i), monthRange(i).label]), String(AD.acMonth), "acm")}
+    <div class="stats"><div class="stat"><div class="k">Made in ${esc(r.label)}</div><div class="v amt-pos">${money(tot("earned"))}</div><div class="small muted">deposits ${money(tot("earned_dep"))} · withdrawals ${money(tot("earned_wd"))}</div></div>
+      <div class="stat"><div class="k">Cut (same customer loops)</div><div class="v amt-neg">${money(tot("penalty"))}</div></div>
+      <div class="stat"><div class="k">Taken back</div><div class="v amt-neg">${money(tot("reversed"))}</div><div class="small muted">refunds · “not paid”</div></div>
+      <div class="stat"><div class="k">They will get (owed now)</div><div class="v" style="color:var(--gold)">${money(tot("owed"))}</div></div></div>
+    ${table(["Agent", "Rates", "Made: deposits", "Made: withdrawals", "Cut", "Taken back", "Paid", "Will get", "Last paid", ""], data.map((d) => `<tr>
+      <td>${who(d)}${Number(d.flagged) ? `<div><span class="badge rejected">⚠️ cut ${d.flagged}×</span></div>` : ""}</td>
+      <td class="small">dep ${Number(d.rate) || 0}%<br>wd ${Number(d.rate_wd) || 0}%</td>
+      <td class="amt-pos">${money(d.earned_dep)}</td><td class="amt-pos">${money(d.earned_wd)}</td>
+      <td class="amt-neg">${Number(d.penalty) ? "−" + money(d.penalty) : "—"}</td>
       <td class="amt-neg">${Number(d.reversed) ? "−" + money(d.reversed) : "—"}</td><td>${Number(d.paid) ? money(d.paid) : "—"}</td>
-      <td><b style="color:var(--gold)">${money(d.owed)}</b></td><td class="small muted">${money(d.waiting)}</td>
+      <td><b style="color:var(--gold)">${money(d.owed)}</b></td>
       <td class="small">${d.last_paid ? fmtDate(d.last_paid) : "never"}</td>
       <td style="white-space:nowrap"><a class="btn sm soft" href="#agentcomm/${d.agent_id}">Details</a>
         ${Number(d.owed) > 0 ? `<button class="btn sm success" data-pay="${d.agent_id}">Pay ${money(d.owed)}</button>` : ""}
-        <button class="btn sm ghost" data-rate="${d.agent_id}">Rate</button></td></tr>`), "No agents yet")}
-    <p class="small muted">* Waiting = commission the agent will earn if customers spend money they topped up (not owed yet).</p>`;
+        <button class="btn sm ghost" data-rate="${d.agent_id}">Rate</button></td></tr>`), "No agents yet")}`;
   $$("[data-acm]", v).forEach((c) => (c.onclick = () => { AD.acMonth = Number(c.dataset.acm); route(); }));
   $$("[data-pay]", v).forEach((btn) => (btn.onclick = () => payCommissionModal(data.find((d) => d.agent_id === btn.dataset.pay), route)));
-  $$("[data-rate]", v).forEach((btn) => (btn.onclick = () => { const d = data.find((x) => x.agent_id === btn.dataset.rate); commissionModal({ id: d.agent_id, member_id: d.member_id, full_name: d.full_name, commission_load: d.rate }, route); }));
+  $$("[data-rate]", v).forEach((btn) => (btn.onclick = () => { const d = data.find((x) => x.agent_id === btn.dataset.rate); commissionModal({ id: d.agent_id, member_id: d.member_id, full_name: d.full_name, commission_load: d.rate, commission_payout: d.rate_wd }, route); }));
 }
 function payCommissionModal(d, after) {
   openModal(`<h2>Pay commission</h2><p>${esc(d.full_name)} <span class="mono muted">${esc(d.member_id)}</span></p>
@@ -3449,25 +3450,27 @@ async function agentCommDetail(v, id) {
       if (AD.acKind !== "all") q = q.eq("kind", AD.acKind); return q; })()]);
   if (error) throw error;
   const d = (ov || []).find((x) => x.agent_id === id) || {};
-  const K = { earned: ["Earned", "completed", "+"], cut: ["Cut — no purchase", "rejected", "−"], reversed: ["Taken back", "cancelled", "−"], paid: ["Paid", "agent", ""] };
+  const K = { earned: ["Made", "completed", "+"], cut: ["Not earned — no purchase", "", ""], reversed: ["Taken back", "cancelled", "−"], penalty: ["Cut — same customer loops", "rejected", "−"], paid: ["Paid", "agent", ""] };
+  const { data: flags } = await sb.from("agent_abuse").select("*, profiles!agent_abuse_customer_id_fkey(member_id, full_name)").eq("agent_id", id).order("day", { ascending: false }).limit(50).then((r) => r, () => ({ data: [] }));
   v.innerHTML = `<a class="back-link" href="#agentcomm">← All agents</a>
-    <div class="card"><div class="row between wrap"><div><h2 style="margin:0">${esc(d.full_name || "")}</h2><div class="mono muted">${esc(d.member_id || "")} · rate ${Number(d.rate || 0)}%</div></div>
+    <div class="card"><div class="row between wrap"><div><h2 style="margin:0">${esc(d.full_name || "")}</h2><div class="mono muted">${esc(d.member_id || "")} · deposits ${Number(d.rate || 0)}% · withdrawals ${Number(d.rate_wd || 0)}%</div></div>
       <div class="row" style="gap:6px">${Number(d.owed) > 0 ? `<button class="btn success" id="payNow">Pay ${money(d.owed)}</button>` : `<span class="badge active">nothing owed</span>`}
         <button class="btn soft" id="setRate">Change rate</button></div></div>
-      <div class="stats mt"><div class="stat"><div class="k">Earned (${esc(r.label)})</div><div class="v amt-pos">${money(d.earned || 0)}</div></div>
-        <div class="stat"><div class="k">Cut</div><div class="v amt-neg">${money(d.cut || 0)}</div></div>
+      <div class="stats mt"><div class="stat"><div class="k">Made (${esc(r.label)})</div><div class="v amt-pos">${money(d.earned || 0)}</div><div class="small muted">deposits ${money(d.earned_dep || 0)} · withdrawals ${money(d.earned_wd || 0)}</div></div>
+        <div class="stat"><div class="k">Cut (loops)</div><div class="v amt-neg">${money(d.penalty || 0)}</div></div>
         <div class="stat"><div class="k">Taken back</div><div class="v amt-neg">${money(d.reversed || 0)}</div></div>
-        <div class="stat"><div class="k">Owed now</div><div class="v" style="color:var(--gold)">${money(d.owed || 0)}</div></div></div></div>
+        <div class="stat"><div class="k">Will get (owed now)</div><div class="v" style="color:var(--gold)">${money(d.owed || 0)}</div></div></div>
+      ${(flags || []).length ? `<h3 class="mt">⚠️ Cut for deposit + withdrawal loops</h3>${(flags || []).map((x) => `<div class="small">${fmtDay(x.day)} · ${x.profiles ? esc(x.profiles.member_id) + " " + esc(x.profiles.full_name || "") : "customer"} — ${x.deposits} deposits + ${x.withdrawals} withdrawals in one day → all commission from this customer in ${new Date(x.month + "T00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" })} cut</div>`).join("")}` : ""}</div>
     ${chips([0, 1, 2, 3, 4, 5].map((i) => [String(i), monthRange(i).label]), String(AD.acMonth || 0), "acm")}
-    ${chips([["all", "All"], ["earned", "Earned"], ["cut", "Cut"], ["reversed", "Taken back"], ["paid", "Paid"]], AD.acKind, "ack")}
+    ${chips([["all", "All"], ["earned", "Made"], ["penalty", "Cut"], ["reversed", "Taken back"], ["paid", "Paid"], ["cut", "Not earned"]], AD.acKind, "ack")}
     ${table(["Date", "Type", "Customer", "Details", "Commission"], (led || []).map((x) => `<tr>
-      <td class="small">${fmtDate(x.created_at)}</td><td><span class="badge ${K[x.kind][1]}">${K[x.kind][0]}</span></td>
+      <td class="small">${fmtDate(x.created_at)}</td><td><span class="badge ${K[x.kind][1]}">${K[x.kind][0]}</span>${x.kind === "earned" || x.kind === "reversed" ? `<div class="small muted">${x.source === "withdraw" ? "withdrawal" : "deposit"}</div>` : ""}</td>
       <td>${x.profiles ? who(x.profiles) : "—"}</td><td class="small">${esc(x.description)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ""}</td>
-      <td><b class="${x.kind === "earned" ? "amt-pos" : x.kind === "paid" ? "" : "amt-neg"}">${K[x.kind][2]}${money(Math.abs(x.amount))}</b>${x.kind === "cut" ? `<div class="small muted">not paid</div>` : ""}</td></tr>`), "Nothing in this month")}`;
+      <td><b class="${x.kind === "earned" ? "amt-pos" : x.kind === "paid" || x.kind === "cut" ? "" : "amt-neg"}">${x.kind === "penalty" && x.amount > 0 ? "+" : K[x.kind][2]}${money(Math.abs(x.amount))}</b>${x.kind === "cut" ? `<div class="small muted">never paid</div>` : ""}</td></tr>`), "Nothing in this month")}`;
   $$("[data-acm]", v).forEach((c) => (c.onclick = () => { AD.acMonth = Number(c.dataset.acm); route(); }));
   $$("[data-ack]", v).forEach((c) => (c.onclick = () => { AD.acKind = c.dataset.ack; route(); }));
   if ($("#payNow")) $("#payNow").onclick = () => payCommissionModal(d, route);
-  $("#setRate").onclick = () => commissionModal({ id, member_id: d.member_id, full_name: d.full_name, commission_load: d.rate }, route);
+  $("#setRate").onclick = () => commissionModal({ id, member_id: d.member_id, full_name: d.full_name, commission_load: d.rate, commission_payout: d.rate_wd }, route);
 }
 
 const STAFF_ROLES = {
