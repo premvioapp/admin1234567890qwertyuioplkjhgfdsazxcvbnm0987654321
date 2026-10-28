@@ -1195,6 +1195,11 @@ body.ag-chat-on .ag-nav { display: none; }
 .cur-row .cur-t { padding-top: 12px; }
 .cur-row input { margin: 0; min-width: 0; }
 .cur-row .cur-t { font-weight: 800; font-size: 1.05rem; }
+/* V72 giveaway */
+.ga-img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; margin-bottom: 10px; display: block; background: var(--bg-2); }
+.ga-prize { color: var(--gold, #f5b800); font-weight: 800; }
+.si-ic.si-trophy { color: #f5b800; background: rgba(245, 184, 0, .14); }
+.cat-chip.cc-trophy:not(.on) svg { color: #f5b800; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1514,6 +1519,7 @@ const ICONS = {
   user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
   brief: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>',
   idcard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.3 1.7-2 3-2s2.4.7 3 2"/><path d="M15 10h3M15 13h3"/></svg>',
+  trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/></svg>',
   gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>',
   ticket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 0 0 6v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3a2 2 0 0 0 0-6V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M14 4v2M14 11v2M14 18v2"/></svg>',
   sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
@@ -1912,6 +1918,7 @@ const SECTIONS = [
   { id: "vouchers", label: "Gift vouchers", icon: ICONS.cash },
   { id: "reviews", label: "Reviews", icon: ICONS.star },
   { id: "features", label: "New features", icon: ICONS.spark },
+  { id: "giveaways", label: "Giveaways", icon: ICONS.trophy, count: "pending_giveaways" },
   { id: "jobs", label: "Jobs", icon: ICONS.idcard },
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "agents", label: "Staff (agents, admins, marketing, support)", icon: ICONS.shield },
@@ -1990,6 +1997,8 @@ async function refreshCounts() {
   data.waiting_agent_pay = ap.error ? 0 : ap.count || 0;
   const sr = await sb.from("sell_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
   data.pending_sells = sr.error ? 0 : sr.count || 0;
+  const gr = await sb.from("giveaway_entries").select("id", { count: "exact", head: true }).eq("status", "pending");
+  data.pending_giveaways = gr.error ? 0 : gr.count || 0;
   if (!c.error && !a.error) { data.pending_deposits = c.count || 0; data.pending_agent_deposits = a.count || 0; }
   data.open_tickets = tk.error ? 0 : tk.count || 0;
   const np = await sb.from("withdrawals").select("id", { count: "exact", head: true }).eq("customer_paid", false)
@@ -2004,7 +2013,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, customers, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, giveaways, customers, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -2044,7 +2053,7 @@ function txNote(t) {
   const n = Array.isArray(t.transaction_notes) ? t.transaction_notes[0]?.note : t.transaction_notes?.note;
   return n ? `<div class="muted">📝 ${esc(n)}</div>` : "";
 }
-const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher", commission: "Agent commission", agent_delivery: "Agent delivery pay", sell: "Bought from customer" };
+const TX_LABEL = { deposit: "Deposit (method)", load: "Deposit (agent)", withdraw: "Withdrawal", purchase: "Purchase", refund: "Refund", adjust: "Admin adjust", agent_load: "Customer top-up (agent)", agent_payout: "Customer withdrawal (agent)", agent_deposit: "Agent deposit (portal)", bonus: "Bonus (referral)", voucher: "Gift voucher", commission: "Agent commission", agent_delivery: "Agent delivery pay", sell: "Bought from customer", giveaway: "Giveaway prize" };
 
 /* ---------- Deposit / Withdraw money (admin only) ---------- */
 function moneyModal(u, kind, after) {
@@ -2351,7 +2360,7 @@ function sellItemForm(it = {}) {
 }
 
 /* ---------------- 📝 ACTION LOG (who changed what, when) ---------------- */
-const LOG_AREA = { jobs: "Job post", products: "Product", payment_methods: "Payment method", app_settings: "Setting", promo_codes: "Promo code", banners: "Banner",
+const LOG_AREA = { giveaways: "Giveaway", giveaway_entries: "Giveaway entry", jobs: "Job post", products: "Product", payment_methods: "Payment method", app_settings: "Setting", promo_codes: "Promo code", banners: "Banner",
   orders: "Order", sell_requests: "Sell request", sell_items: "We buy item", deposit_requests: "Deposit request", payout_requests: "Withdrawal request", withdrawals: "PremvioCash code", kyc: "KYC",
   profiles: "Account", vouchers: "Voucher", transactions: "Money" };
 function logValue(x) {
@@ -2598,6 +2607,192 @@ function jobForm(j = {}) {
         const { error } = j.id ? await sb.from("jobs").update(row).eq("id", j.id) : await sb.from("jobs").insert(row);
         if (error) throw error;
         closeModal(); toast("Job saved.", "success"); route();
+      });
+    };
+  });
+}
+
+/* ---------------- 🏆 GIVEAWAYS (entries with photo proof → select & pay) ---------------- */
+async function giveaways(v) {
+  if (!AD.gaTab) AD.gaTab = "entries";
+  if (!AD.gaF) AD.gaF = "pending";
+  const tabs = chips([["entries", "Entries"], ["posts", "Giveaways"]], AD.gaTab, "gat");
+  const { data: posts, error: pe } = await sb.from("giveaways").select("*").order("sort").order("id", { ascending: false });
+  if (pe) throw pe;
+  const gName = (id) => posts.find((g) => g.id === id);
+  if (AD.gaTab === "posts") {
+    const { data: ents } = await sb.from("giveaway_entries").select("giveaway_id, status, prize_paid").limit(10000);
+    const cnt = (id, st) => (ents || []).filter((e) => e.giveaway_id === id && (!st || e.status === st)).length;
+    const paid = (id) => (ents || []).filter((e) => e.giveaway_id === id && e.status === "selected").reduce((a, e) => a + Number(e.prize_paid || 0), 0);
+    const state = (g) => !g.active ? ["cancelled", "hidden"] : g.ends_at && new Date(g.ends_at) <= new Date() ? ["rejected", "ended"] : ["active", "open"];
+    v.innerHTML = tabs + `<div class="toolbar"><button class="btn" id="addGA">${ICONS.plus} Add giveaway</button></div>` +
+      table(["Photo", "Giveaway", "Prize", "Ends", "Entries", "Winners / paid", "Status", ""], posts.map((g) => `<tr>
+        <td>${g.image_url ? `<img class="thumb" src="${esc(g.image_url)}">` : `<div class="thumb"></div>`}</td>
+        <td><b>${esc(g.title)}</b><div class="small muted">${esc(String(g.details || "").slice(0, 90))}</div></td>
+        <td>${esc(g.prize || "—")}${g.prize_amount ? `<div class="small muted">default ${money(g.prize_amount)}</div>` : ""}</td>
+        <td class="small">${g.ends_at ? fmtDate(g.ends_at) : "—"}</td>
+        <td><b>${cnt(g.id)}</b>${cnt(g.id, "pending") ? `<div class="small">${cnt(g.id, "pending")} waiting</div>` : ""}</td>
+        <td>${cnt(g.id, "selected")} · ${money(paid(g.id))}</td>
+        <td><span class="badge ${state(g)[0]}">${state(g)[1]}</span></td>
+        <td style="white-space:nowrap"><button class="btn sm soft" data-gae="${g.id}">Edit</button><button class="btn sm soft" data-gav="${g.id}">Entries</button>
+          <button class="btn sm ghost" data-gah="${g.id}">${g.active ? "Hide" : "Show"}</button>${cnt(g.id) ? "" : `<button class="btn sm ghost" data-gad="${g.id}">Delete</button>`}</td></tr>`),
+        "No giveaways yet — add one");
+    $("#addGA").onclick = () => giveawayForm();
+    $$("[data-gae]", v).forEach((b) => (b.onclick = () => giveawayForm(gName(Number(b.dataset.gae)))));
+    $$("[data-gav]", v).forEach((b) => (b.onclick = () => { AD.gaTab = "entries"; AD.gaG = Number(b.dataset.gav); AD.gaF = "pending"; route(); }));
+    $$("[data-gah]", v).forEach((b) => (b.onclick = async () => {
+      const g = gName(Number(b.dataset.gah));
+      const { error: er } = await sb.from("giveaways").update({ active: !g.active }).eq("id", g.id);
+      if (er) return toast(errMsg(er), "error");
+      route();
+    }));
+    $$("[data-gad]", v).forEach((b) => (b.onclick = async () => {
+      if (!(await confirmBox("Delete giveaway?", "Customers will not see it any more.", "Delete", true))) return;
+      const { error: er } = await sb.from("giveaways").delete().eq("id", b.dataset.gad);
+      if (er) return toast(errMsg(er), "error");
+      toast("Deleted.", "success"); route();
+    }));
+  } else {
+    let q = sb.from("giveaway_entries").select("*, profiles(full_name, member_id, phone)").order("created_at", { ascending: false }).limit(500);
+    if (AD.gaF !== "all") q = q.eq("status", AD.gaF);
+    if (AD.gaG) q = q.eq("giveaway_id", AD.gaG);
+    const { data, error } = await q;
+    if (error) throw error;
+    const paid = data.filter((e) => e.status === "selected").reduce((a, e) => a + Number(e.prize_paid || 0), 0);
+    const st = { pending: ["pending", "waiting"], selected: ["completed", "selected"], not_selected: ["rejected", "not selected"] };
+    v.innerHTML = tabs + `<div class="toolbar" style="flex-wrap:wrap;gap:8px">
+        ${chips([["pending", "Waiting"], ["selected", "Selected"], ["not_selected", "Not selected"], ["all", "All"]], AD.gaF, "gaf")}
+        <select id="gaG" style="max-width:260px;margin:0"><option value="">All giveaways</option>${posts.map((g) => `<option value="${g.id}" ${AD.gaG === g.id ? "selected" : ""}>${esc(g.title)}</option>`).join("")}</select>
+        ${AD.gaG && AD.gaF === "pending" && data.length ? `<button class="btn sm ghost" id="gaRest">Mark all waiting as not selected</button>` : ""}</div>
+      ${AD.gaF === "selected" || AD.gaF === "all" ? `<div class="stats"><div class="stat"><div class="k">Paid to winners (shown)</div><div class="v">${money(paid)}</div></div></div>` : ""}
+      ${table(["#", "Customer", "Giveaway", "Details", "Photo", "Status", ""], data.map((e) => `<tr>
+        <td>${e.id}</td><td>${who(e.profiles)}<div class="small muted">${esc(e.profiles?.phone || "")}</div></td>
+        <td><b>${esc(e.giveaway_title)}</b><div class="small muted">${fmtDate(e.created_at)}</div></td>
+        <td>${formView(e.form_data)}</td>
+        <td><button class="btn sm soft" data-gap="${esc(e.proof_path)}">🧾 View</button></td>
+        <td><span class="badge ${st[e.status]?.[0] || ""}">${st[e.status]?.[1] || e.status}</span>${e.status === "selected" ? `<div class="small"><b>${money(e.prize_paid)}</b></div>` : ""}${e.admin_note ? `<div class="small muted">${esc(e.admin_note)}</div>` : ""}</td>
+        <td style="white-space:nowrap">${e.status === "pending" ? `<button class="btn sm success" data-gas="${e.id}">Select & pay</button><button class="btn sm ghost" data-gan="${e.id}">Not selected</button>` : ""}</td>
+      </tr>`), AD.gaF === "pending" ? "No entries waiting" : "Nothing here")}`;
+    $$("[data-gaf]", v).forEach((c) => (c.onclick = () => { AD.gaF = c.dataset.gaf; route(); }));
+    $("#gaG").onchange = (ev) => { AD.gaG = Number(ev.target.value) || null; route(); };
+    if ($("#gaRest")) $("#gaRest").onclick = async () => {
+      if (!(await confirmBox("Mark all as not selected?", `All ${data.length} waiting entries of this giveaway get "not selected" and a message. Do this only after you picked the winners.`, "Mark all", true))) return;
+      const { data: n, error: er } = await sb.rpc("admin_giveaway_close_rest", { p_giveaway: AD.gaG });
+      if (er) return toast(errMsg(er), "error");
+      toast(`${n} entries marked not selected.`, "success"); refreshCounts(); route();
+    };
+    $$("[data-gap]", v).forEach((b) => (b.onclick = async () => {
+      const url = await viewProof(b.dataset.gap); if (!url) return;
+      openModal(`<h2>Photo proof</h2><img src="${esc(url)}" alt="" style="width:100%;border-radius:12px;background:#000">
+        <p class="small muted mt"><a href="${esc(url)}" target="_blank" rel="noopener">Open full size</a></p>`);
+    }));
+    $$("[data-gas]", v).forEach((b) => (b.onclick = async () => {
+      const e = data.find((x) => x.id == b.dataset.gas), g = gName(e.giveaway_id);
+      const url = await viewProof(e.proof_path);
+      openModal(`<h2>Select #${e.id} — ${esc(e.giveaway_title)}</h2>
+        <p>${esc(e.profiles?.full_name || "")} (${esc(e.profiles?.member_id || e.member_id || "")})</p>${formView(e.form_data)}
+        ${url ? `<img src="${esc(url)}" alt="" style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;background:#000;margin-top:10px">` : ""}
+        <form id="gasf"><label>Prize to pay (${CFG.CURRENCY})</label><input type="number" name="amt" min="0.01" step="0.01" required value="${g?.prize_amount ?? ""}" inputmode="decimal">
+          <label>Message to customer <span class="muted">(optional)</span></label><input name="note" maxlength="200" placeholder="e.g. Congratulations!">
+          <p class="small muted">The money is added to their balance right away.</p>
+          <button class="btn success block mt">Select & pay</button></form>`, (m) => {
+        $("#gasf", m).onsubmit = (ev) => {
+          ev.preventDefault();
+          const amt = Number(ev.target.amt.value);
+          if (!(amt > 0)) return toast("Enter the prize amount.", "error");
+          busy($("button", ev.target), async () => {
+            const { error: er } = await sb.rpc("admin_review_giveaway", { p_id: e.id, p_selected: true, p_amount: amt, p_note: ev.target.note.value.trim() || null });
+            if (er) throw er;
+            closeModal(); toast(`Selected — ${money(amt)} added to ${e.profiles?.member_id || "the customer"}.`, "success"); refreshCounts(); route();
+          });
+        };
+      });
+    }));
+    $$("[data-gan]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Not selected #${b.dataset.gan}</h2><form id="ganf">
+      <label>Message to customer <span class="muted">(optional)</span></label><input name="note" maxlength="200" placeholder="e.g. Photo did not show 3 friends">
+      <button class="btn danger block mt">Not selected</button></form>`, (m) => {
+      $("#ganf", m).onsubmit = (ev) => {
+        ev.preventDefault();
+        busy($("button", ev.target), async () => {
+          const { error: er } = await sb.rpc("admin_review_giveaway", { p_id: Number(b.dataset.gan), p_selected: false, p_note: ev.target.note.value.trim() || null });
+          if (er) throw er;
+          closeModal(); toast("Marked not selected.", "success"); refreshCounts(); route();
+        });
+      };
+    })));
+  }
+  $$("[data-gat]", v).forEach((c) => (c.onclick = () => { AD.gaTab = c.dataset.gat; route(); }));
+}
+// rows the customer can only see + copy: [{label, value}]
+function mountDetailRows(box, rows) {
+  const add = (r = {}) => {
+    if ($$(".dr-row", box).length >= 20) return toast("Max 20 details.", "error");
+    const d = document.createElement("div"); d.className = "dr-row";
+    d.innerHTML = `<input class="dr-l" maxlength="40" placeholder="Name (e.g. Special code)" value="${esc(r.label || "")}">
+      <input class="dr-v" maxlength="300" placeholder="Value (e.g. PVGIFT2026)" value="${esc(r.value || "")}">
+      <button type="button" class="btn sm ghost" title="Remove">✕</button>`;
+    $("button", d).onclick = () => d.remove();
+    box.appendChild(d);
+  };
+  rows.forEach(add);
+  return {
+    add: () => { add(); const l = $$(".dr-l", box).pop(); if (l) l.focus(); },
+    collect: () => {
+      const out = $$(".dr-row", box).map((d) => ({ label: $(".dr-l", d).value.trim(), value: $(".dr-v", d).value.trim() })).filter((r) => r.label || r.value);
+      if (out.some((r) => !r.value)) throw new Error("Each detail needs a value (or remove the empty row).");
+      if (out.some((r) => !r.label)) throw new Error("Each detail needs a name (e.g. Special code).");
+      return out;
+    },
+  };
+}
+function localDT(iso) {   // ISO → value for <input type="datetime-local">
+  if (!iso) return "";
+  const d = new Date(iso), z = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+function giveawayForm(g = {}) {
+  const fields = (g.fields || []).map((x) => ({ ...x }));
+  openModal(`<h2>${g.id ? "Edit giveaway" : "Add giveaway"}</h2><form id="gaform">
+    <label>Photo <span class="muted">(optional)</span></label>
+    <div class="row"><img id="gaprev" class="thumb ${g.image_url ? "" : "hidden"}" src="${esc(g.image_url || "")}" style="width:72px;height:72px"><input type="file" name="file" accept="image/*"></div>
+    <label>Title</label><input name="title" required maxlength="120" value="${esc(g.title || "")}" placeholder="e.g. Invite 3 friends — win NPR 500">
+    <div class="grid-2"><div><label>Prize text <span class="muted">(customers see it)</span></label><input name="prize" maxlength="120" value="${esc(g.prize || "")}" placeholder="e.g. NPR 500 for 10 winners"></div>
+      <div><label>Prize amount (${CFG.CURRENCY}) <span class="muted">(fills “Select & pay”)</span></label><input type="number" name="amt" min="0" step="0.01" value="${g.prize_amount ?? ""}" placeholder="e.g. 500"></div>
+      <div><label>Ends <span class="muted">(optional)</span></label><input type="datetime-local" name="ends" value="${localDT(g.ends_at)}"></div>
+      <div><label>Times one customer can join</label><input type="number" name="maxe" min="1" max="100" value="${g.max_entries ?? 1}"></div>
+      <div><label>Display order</label><input type="number" name="sort" value="${g.sort ?? 0}"></div></div>
+    <label>Details / rules</label><textarea name="details" maxlength="3000" rows="4" placeholder="e.g. Invite 3 friends with our code, take a screenshot and upload it.">${esc(g.details || "")}</textarea>
+    <label>Details customers can copy <span class="muted">(you choose each name — their own ID is shown automatically)</span></label>
+    <div id="garows"></div><button type="button" class="btn soft sm mt" id="addGR">${ICONS.plus} Add detail</button>
+    <div class="setting-row mt"><b>Visible to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${g.active !== false ? "checked" : ""}><span></span></label></div>
+    <h3 class="mt">What the customer fills in</h3><p class="small muted">A photo proof is always asked. Name and Member ID are saved automatically.</p>
+    <div id="gafields"></div><button type="button" class="btn soft block mt" id="addGF">${ICONS.plus} Add field</button>
+    <button class="btn block mt" id="saveGA">Save giveaway</button></form>`, (md) => {
+    const f = $("#gaform", md);
+    const rb = mountDetailRows($("#garows", md), pmRows(g).length ? pmRows(g) : g.id ? [] : [{ label: "Special code" }]);
+    $("#addGR", md).onclick = rb.add;
+    const fb = mountFieldBuilder($("#gafields", md), fields, "No fields — only the photo proof.");
+    $("#addGF", md).onclick = fb.add;
+    f.file.onchange = () => { const fl = f.file.files[0]; if (fl) { $("#gaprev", md).src = URL.createObjectURL(fl); $("#gaprev", md).classList.remove("hidden"); } };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      let flds, rows;
+      try { flds = fb.collect(); rows = rb.collect(); } catch (err) { return toast(err.message, "error"); }
+      const amt = f.amt.value === "" ? null : Number(f.amt.value);
+      if (amt != null && !(amt > 0)) return toast("Prize amount must be more than 0 (or leave it empty).", "error");
+      const ends = f.ends.value ? new Date(f.ends.value) : null;
+      if (ends && isNaN(ends)) return toast("Check the end date.", "error");
+      const maxe = Math.min(100, Math.max(1, Math.floor(Number(f.maxe.value) || 1)));
+      busy($("#saveGA", md), async () => {
+        let image_url = g.image_url || null;
+        if (f.file.files[0]) image_url = await uploadImage(f.file.files[0], "banners");
+        const row = { title: f.title.value.trim(), prize: f.prize.value.trim(), prize_amount: amt, ends_at: ends ? ends.toISOString() : null,
+          max_entries: maxe, sort: Number(f.sort.value) || 0, details: f.details.value.trim(), detail_rows: rows, fields: flds,
+          active: f.active.checked, image_url };
+        const { error } = g.id ? await sb.from("giveaways").update(row).eq("id", g.id) : await sb.from("giveaways").insert(row);
+        if (error && /giveaway/.test(error.message || "") && /exist|schema cache/.test(error.message || "")) throw new Error("Database update needed: run 49-update-giveaway.sql in Supabase, then try again.");
+        if (error) throw error;
+        closeModal(); toast("Giveaway saved.", "success"); route();
       });
     };
   });
@@ -3819,7 +4014,7 @@ async function transactions(v) {
   if (AD.txType !== "all") q = q.eq("type", AD.txType);
   const { data, error } = await q;
   if (error) throw error;
-  const types = [["all", "All"], ["sell", "Bought from customers"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"], ["voucher", "Gift vouchers"], ["commission", "Agent commission"]];
+  const types = [["all", "All"], ["sell", "Bought from customers"], ["giveaway", "Giveaway prizes"], ["load", "Agent deposits"], ["adjust", "Admin deposit/withdraw"], ["purchase", "Purchases"], ["withdraw", "Withdrawals"], ["refund", "Refunds"], ["agent_load", "Agent loads"], ["agent_payout", "Agent payouts"], ["agent_deposit", "Agent balance deposits"], ["bonus", "Referral bonuses"], ["voucher", "Gift vouchers"], ["commission", "Agent commission"]];
   const inSum = data.filter((t) => t.amount > 0).reduce((a, t) => a + Number(t.amount), 0);
   const outSum = data.filter((t) => t.amount < 0).reduce((a, t) => a - Number(t.amount), 0);
   v.innerHTML = rangeBar(AD.txRange) + chips(types, AD.txType, "tt") +
