@@ -1189,6 +1189,8 @@ body.ag-chat-on .ag-nav { display: none; }
 .dr-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; margin-top: 6px; }
 .dr-row input { margin: 0; }
 @media (max-width: 420px) { .dr-row { grid-template-columns: 1fr auto; } .dr-row .dr-v { grid-column: 1 / 2; grid-row: 2; } }
+.pm-conv { margin-top: 6px; font-size: .9rem; padding: 8px 12px; border-radius: 10px; background: rgba(31, 162, 255, .1); border: 1px solid rgba(31, 162, 255, .3); }
+.pm-conv b { color: var(--blue); font-size: 1rem; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1668,6 +1670,26 @@ function pmRowsHtml(m) {
   return `<div class="pm-rows mt">${rows.map((r) => `<div class="pm-row">
     <div class="grow"><div class="pm-row-l">${esc(r.label)}</div><div class="pm-row-v">${esc(r.value)}</div></div>
     ${r.value ? `<button type="button" class="btn sm soft" onclick="copyText(this.dataset.v)" data-v="${esc(r.value)}">${ICONS.copy} Copy</button>` : ""}</div>`).join("")}</div>`;
+}
+// V70: deposit method in another currency (admin sets e.g. USD, 1 USD = 151 NPR)
+function pmCur(m) {
+  const c = String((m && m.pay_currency) || "").trim(), r = Number(m && m.pay_rate);
+  return c && r > 0 ? { cur: c, rate: r } : null;
+}
+function pmPayAmt(npr, rate) {   // same as the server: NPR ÷ rate, rounded UP to 2 decimals
+  const n = Number(npr), r = Number(rate);
+  if (!(n > 0) || !(r > 0)) return null;
+  return Math.ceil(Math.round((n / r) * 100 * 1e6) / 1e6) / 100;
+}
+function fmtCur(v, cur) {
+  return Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + cur;
+}
+function pmRateText(c) { return `1 ${c.cur} = ${CFG.CURRENCY} ${Number(c.rate).toLocaleString("en-US", { maximumFractionDigits: 4 })}`; }
+// small live line under an NPR amount box: "You pay 33.12 USD"
+function pmConvBind(input, out, c) {
+  const paint = () => { const p = pmPayAmt(input.value, c.rate);
+    out.innerHTML = p ? `You pay <b>${esc(fmtCur(p, c.cur))}</b> <span class="muted">· ${esc(pmRateText(c))}</span>` : `<span class="muted">${esc(pmRateText(c))}</span>`; };
+  input.addEventListener("input", paint); paint();
 }
 // V69: red notice the admin writes per deposit method
 function pmNoticeHtml(m) {
@@ -4012,7 +4034,9 @@ function mountFieldBuilder(box, fields, emptyText) {
 
 function pmAdminSummary(m) {
   const rows = pmRows(m);
-  return (m.notice ? `<div class="small" style="color:var(--red);font-weight:700">⚠ ${esc(m.notice)}</div>` : "") +
+  const c = pmCur(m);
+  return (c ? `<div class="small"><span class="badge admin">Pays in ${esc(c.cur)}</span> ${esc(pmRateText(c))}</div>` : "") +
+    (m.notice ? `<div class="small" style="color:var(--red);font-weight:700">⚠ ${esc(m.notice)}</div>` : "") +
     (rows.length ? `<div class="small">${rows.map((r) => `<span class="muted">${esc(r.label)}:</span> <b>${esc(r.value)}</b>`).join(" · ")}</div>` : "");
 }
 async function methods(v) {
@@ -4099,6 +4123,10 @@ function methodForm(m, agentsList) {
       <p class="small muted" id="linkHint"></p>`}
     ${forAgents ? "" : `<div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
     <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>`}
+    ${dep ? `<label>Pays in another currency <span class="muted">(optional — empty = ${CFG.CURRENCY})</span></label>
+    <div class="grid-2"><div><input name="pay_currency" maxlength="10" value="${esc(m.pay_currency || "")}" placeholder="e.g. USD" style="text-transform:uppercase"></div>
+      <div><input type="number" name="pay_rate" min="0" step="0.0001" value="${m.pay_rate ?? ""}" placeholder="${CFG.CURRENCY} for 1 (e.g. 151)" inputmode="decimal"></div></div>
+    <p class="small muted" id="curHint"></p>` : ""}
     <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
     ${forAgents ? `<label>Which agents can use it</label>
       <div class="seg"><label><input type="radio" name="who" value="all" ${chosen.size ? "" : "checked"}> All agents</label>
@@ -4124,6 +4152,12 @@ function methodForm(m, agentsList) {
     <button class="btn block mt" id="saveM">Save method</button></form>`, (md) => {
     const f = $("#mf2", md);
     const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No fields added." : "No extra fields — only the amount.");
+    if (f.pay_currency) {
+      const ch = () => { const c = f.pay_currency.value.trim().toUpperCase(), r = Number(f.pay_rate.value);
+        $("#curHint", md).innerHTML = c && r > 0 ? `1 ${esc(c)} = ${CFG.CURRENCY} ${r} · e.g. ${CFG.CURRENCY} 5,000 → they pay <b>${esc(fmtCur(pmPayAmt(5000, r), c))}</b>. The amount box is always shown for this method.`
+          : c || f.pay_rate.value ? `<span style="color:var(--red)">Fill both: currency and rate.</span>` : ""; };
+      f.pay_currency.oninput = ch; f.pay_rate.oninput = ch; ch();
+    }
     // V69: payment detail rows (label + value) for deposit methods
     const drBox = $("#drows", md);
     const drAdd = (r = {}) => {
@@ -4165,6 +4199,15 @@ function methodForm(m, agentsList) {
       if (mn != null && mx != null && mn > mx) return toast("Minimum can't be more than maximum.", "error");
       const link = f.link ? pvLink(f.link.value) : m.link || null;
       if (f.link && f.link.value.trim() && !link) return toast("Button link: type a Telegram username like @premvio, or a link starting with https://", "error");
+      let pay_currency = "", pay_rate = null;
+      if (f.pay_currency) {
+        pay_currency = f.pay_currency.value.trim().toUpperCase();
+        pay_rate = f.pay_rate.value === "" ? null : Number(f.pay_rate.value);
+        if (pay_currency && !/^[A-Z0-9]{1,10}$/.test(pay_currency)) return toast("Currency: letters/numbers only, e.g. USD or USDT.", "error");
+        if (pay_currency && !(pay_rate > 0)) return toast(`Enter the rate: how much ${CFG.CURRENCY} for 1 ${pay_currency}.`, "error");
+        if (!pay_currency && pay_rate != null) return toast("Enter the currency (e.g. USD) or clear the rate.", "error");
+        if (!pay_currency) pay_rate = null;
+      }
       let detail_rows = [];
       if (drBox) {
         detail_rows = $$(".dr-row", drBox).map((d) => ({ label: $(".dr-l", d).value.trim(), value: $(".dr-v", d).value.trim() }))
@@ -4181,9 +4224,11 @@ function methodForm(m, agentsList) {
           row.audience = forAgents ? "agents" : "customers"; row.agent_ids = forAgents ? agent_ids : null;
           row.proof_mode = f.proof_mode.value; row.ask_amount = forAgents ? false : f.ask_amount.checked;
           row.detail_rows = detail_rows; row.notice = f.notice.value.trim();
+          row.pay_currency = pay_currency; row.pay_rate = pay_rate;
         }
         const { error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id) : await sb.from("payment_methods").insert(row);
         if (error && /detail_rows|notice/.test(error.message || "")) throw new Error("Database update needed: run 47-update-deposit-details.sql in Supabase, then try again.");
+        if (error && /pay_currency|pay_rate/.test(error.message || "")) throw new Error("Database update needed: run 48-update-deposit-currency.sql in Supabase, then try again.");
         if (error) throw error;
         closeModal(); toast("Method saved.", "success"); route();
       });
@@ -4197,6 +4242,10 @@ async function viewProof(path) {
   if (error) { toast(errMsg(error), "error"); return null; }
   return u.signedUrl;
 }
+function payLine(d) {
+  return d.pay_currency && d.pay_amount != null ? `<div class="small"><b style="color:var(--blue)">${esc(fmtCur(d.pay_amount, d.pay_currency))}</b>
+    <span class="muted">· 1 ${esc(d.pay_currency)} = ${Number(d.pay_rate)}</span></div>` : "";
+}
 function agentdeposits(v) { return deposits(v, "agent"); }
 async function deposits(v, depRole = "customer") {
   if (!AD.depFilter) AD.depFilter = "pending";
@@ -4207,14 +4256,14 @@ async function deposits(v, depRole = "customer") {
   if (error) throw error;
   const isAgent = (d) => d.requester_role === "agent";
   v.innerHTML = (depRole === "agent"
-      ? `<p class="muted small">Agents paid you from the <b>Agent Deposit Portal</b> (agent-deposit.html) and uploaded a screenshot. They don't type an amount —
+      ? `<p class="muted small">Agents paid you from the <b>Agent Deposit Portal</b> (agent-deposit.html) and uploaded a screenshot. They don't type an amount (except on methods with another currency, where they type ${CFG.CURRENCY} and you can change it) —
         check the screenshot and your account, then press Approve and <b>type the amount you received</b>. It goes straight to that agent's balance.</p>`
       : `<p class="muted small">Customers paid with one of your deposit methods. Check the screenshot (if sent) and your account, then approve to add the money to their balance. If the method doesn't ask the amount, you type it when approving.
         Agent deposits are on the <a href="#agentdeposits">Agent deposits</a> page.</p>`) +
     chips([["pending", "Waiting"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]], AD.depFilter, "df") +
     table(["#", depRole === "agent" ? "Agent" : "Customer", "Method", "Amount", "Details", "Sent", "Screenshot", "Status", ""], data.map((d) => `<tr>
       <td>${d.id}</td><td>${who(d.profiles)}${isAgent(d) ? `<span class="badge agent">agent</span>` : ""}</td><td><b>${esc(d.method_name)}</b></td>
-      <td>${d.amount != null ? `<b>${money(d.amount)}</b>` : `<span class="small muted">admin enters</span>`}</td>
+      <td>${d.amount != null ? `<b>${money(d.amount)}</b>` : `<span class="small muted">admin enters</span>`}${payLine(d)}</td>
       <td>${formView(d.form_data)}</td><td class="small">${fmtDate(d.created_at)}</td>
       <td>${d.proof_path ? `<button class="btn sm soft" data-proof="${esc(d.proof_path)}">🧾 View</button>` : "—"}</td>
       <td><span class="badge ${d.status === "approved" ? "completed" : d.status}">${d.status}</span>${d.admin_note ? `<div class="small muted">${esc(d.admin_note)}</div>` : ""}</td>
@@ -4229,16 +4278,19 @@ async function deposits(v, depRole = "customer") {
   $$("[data-dok]", v).forEach((b) => (b.onclick = async () => {
     const d = data.find((x) => x.id == b.dataset.dok);
     const url = d.proof_path ? await viewProof(d.proof_path) : null;
-    const ag = isAgent(d), needAmt = ag || d.amount == null;
+    const ag = isAgent(d), needAmt = ag || d.amount == null || !!d.pay_currency;
     openModal(`<h2>Approve ${ag ? "agent " : ""}deposit #${d.id}</h2>
       <p>${needAmt ? "" : `<b>${money(d.amount)}</b> `}via <b>${esc(d.method_name)}</b> from ${esc(d.profiles?.full_name || "")} (${esc(d.profiles?.member_id || "")})${ag ? ` <span class="badge agent">agent</span>` : ""}</p>
+      ${d.pay_currency && d.pay_amount != null ? `<div class="pm-conv">They should have paid <b>${esc(fmtCur(d.pay_amount, d.pay_currency))}</b> for <b>${money(d.amount)}</b>
+        <span class="muted">· 1 ${esc(d.pay_currency)} = ${CFG.CURRENCY} ${Number(d.pay_rate)}</span></div>` : ""}
       ${formView(d.form_data)}
       ${url ? `<img src="${esc(url)}" alt="Screenshot" style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;background:#000;margin-top:10px">` : ""}
-      ${needAmt ? `<label>Amount you received (${CFG.CURRENCY})</label><input type="number" id="dokAmt" min="1" step="0.01" inputmode="decimal" required placeholder="e.g. 5000">
+      ${needAmt ? `<label>Amount you received (${CFG.CURRENCY})</label><input type="number" id="dokAmt" min="1" step="0.01" inputmode="decimal" required placeholder="e.g. 5000" value="${d.amount != null ? Number(d.amount) : ""}">
       <p class="small muted">This amount is added to ${ag ? "agent" : "customer"} ${esc(d.profiles?.member_id || "")}'s balance.</p>` : ""}
       <p class="small muted mt">Only approve after you see the money in your account.</p>
       <button class="btn success block mt" id="dokBtn">${needAmt ? "Approve — add to balance" : `Approve — add ${money(d.amount)}`}</button>`, (m) => {
-      if (needAmt) $("#dokAmt", m).oninput = (e) => { const n = Number(e.target.value); $("#dokBtn", m).textContent = n > 0 ? `Approve — add ${money(n)} to ${d.profiles?.member_id || "balance"}` : "Approve — add to balance"; };
+      if (needAmt) { $("#dokAmt", m).oninput = (e) => { const n = Number(e.target.value); $("#dokBtn", m).textContent = n > 0 ? `Approve — add ${money(n)} to ${d.profiles?.member_id || "balance"}` : "Approve — add to balance"; };
+        $("#dokAmt", m).dispatchEvent(new Event("input")); }
       $("#dokBtn", m).onclick = () => {
         const amt = needAmt ? Number($("#dokAmt", m).value) : null;
         if (needAmt && !(amt > 0)) return toast("Enter the amount you received.", "error");
