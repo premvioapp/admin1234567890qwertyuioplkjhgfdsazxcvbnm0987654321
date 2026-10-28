@@ -1165,6 +1165,18 @@ body.ag-chat-on .ag-nav { display: none; }
 /* stars + smileys behind the app (V61) */
 .app-stars { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: .75; }
 .app.cust-app { position: relative; z-index: 1; }
+/* V67 jobs */
+.job-list { display: grid; gap: 10px; }
+.job-card { width: 100%; text-align: left; font: inherit; color: var(--text); cursor: pointer; margin: 0; }
+.job-t { font-size: 1.02rem; }
+.job-go { color: var(--blue); font-weight: 700; font-size: .85rem; white-space: nowrap; }
+.job-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: .85rem; color: var(--muted); }
+.job-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.job-meta svg { width: 15px; height: 15px; }
+.job-d { margin: 6px 0 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.si-ic.si-brief { color: var(--orange); background: rgba(255, 159, 67, .14); }
+.cat-chip.cc-brief:not(.on) svg { color: var(--orange); }
+.jrad { display: inline-flex !important; align-items: center; gap: 6px; margin: 6px 0 0 !important; color: var(--text) !important; } .jrad input { width: auto !important; margin: 0 !important; }
 
 </style>
 <title>Premvio Admin</title>
@@ -1482,6 +1494,7 @@ const ICONS = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
+  brief: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>',
   idcard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.3 1.7-2 3-2s2.4.7 3 2"/><path d="M15 10h3M15 13h3"/></svg>',
   gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>',
   ticket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 0 0 6v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3a2 2 0 0 0 0-6V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M14 4v2M14 11v2M14 18v2"/></svg>',
@@ -1843,6 +1856,7 @@ const SECTIONS = [
   { id: "vouchers", label: "Gift vouchers", icon: ICONS.cash },
   { id: "reviews", label: "Reviews", icon: ICONS.star },
   { id: "features", label: "New features", icon: ICONS.spark },
+  { id: "jobs", label: "Jobs", icon: ICONS.idcard },
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "agents", label: "Staff (agents, admins, marketing, support)", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
@@ -1934,7 +1948,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, customers, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, customers, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -2281,7 +2295,7 @@ function sellItemForm(it = {}) {
 }
 
 /* ---------------- 📝 ACTION LOG (who changed what, when) ---------------- */
-const LOG_AREA = { products: "Product", payment_methods: "Payment method", app_settings: "Setting", promo_codes: "Promo code", banners: "Banner",
+const LOG_AREA = { jobs: "Job post", products: "Product", payment_methods: "Payment method", app_settings: "Setting", promo_codes: "Promo code", banners: "Banner",
   orders: "Order", sell_requests: "Sell request", sell_items: "We buy item", deposit_requests: "Deposit request", payout_requests: "Withdrawal request", withdrawals: "PremvioCash code", kyc: "KYC",
   profiles: "Account", vouchers: "Voucher", transactions: "Money" };
 function logValue(x) {
@@ -2465,6 +2479,72 @@ async function agentorders(v) {
       });
     };
   })));
+}
+
+/* ---------------- 🧑‍💼 JOBS: posts here, applications go to the Telegram bot ---------------- */
+async function jobs(v) {
+  if (!AD.jbF) AD.jbF = "posts";
+  const tabs = chips([["posts", "Job posts"], ["apps", "Applications"]], AD.jbF, "jbf");
+  if (AD.jbF === "apps") {
+    const { data, error } = await sb.from("job_applications").select("*, profiles(full_name, member_id, phone)").order("created_at", { ascending: false }).limit(300);
+    if (error) throw error;
+    v.innerHTML = tabs + `<p class="small muted">Every application is also sent to your Telegram bot.</p>` +
+      table(["#", "Date", "Job", "Applicant", "Answers", "File"], data.map((a) => `<tr><td>${a.id}</td><td class="small">${fmtDate(a.created_at)}</td>
+        <td><b>${esc(a.job_title)}</b></td><td>${who(a.profiles)}<div class="small muted">${esc(a.profiles?.phone || "")}</div></td>
+        <td>${formView(a.answers)}</td><td>${a.file_url ? `<a class="btn sm soft" href="${esc(a.file_url)}" target="_blank" rel="noopener">Open</a>` : "—"}</td></tr>`), "No applications yet");
+  } else {
+    const [{ data, error }, { data: apps }] = await Promise.all([
+      sb.from("jobs").select("*").order("sort").order("id", { ascending: false }),
+      sb.from("job_applications").select("job_id")]);
+    if (error) throw error;
+    const cnt = (id) => (apps || []).filter((a) => a.job_id === id).length;
+    v.innerHTML = tabs + `<div class="toolbar"><button class="btn" id="addJob">${ICONS.plus} Add job</button></div>` +
+      table(["Job", "Salary", "Place", "Applications", "Status", ""], data.map((j) => `<tr><td><b>${esc(j.title)}</b><div class="small muted">${esc(String(j.details || "").slice(0, 90))}</div></td>
+        <td>${esc(j.salary || "—")}</td><td>${esc(j.location || "—")}</td><td>${cnt(j.id)}</td>
+        <td><span class="badge ${j.active ? "active" : "cancelled"}">${j.active ? "open" : "closed"}</span></td>
+        <td style="white-space:nowrap"><button class="btn sm soft" data-jed="${j.id}">Edit</button><button class="btn sm ghost" data-jtg="${j.id}">${j.active ? "Close" : "Open"}</button></td></tr>`), "No jobs yet — add one");
+    $("#addJob").onclick = () => jobForm();
+    $$("[data-jed]", v).forEach((b) => (b.onclick = () => jobForm(data.find((j) => j.id == b.dataset.jed))));
+    $$("[data-jtg]", v).forEach((b) => (b.onclick = async () => {
+      const j = data.find((x) => x.id == b.dataset.jtg);
+      const { error: er } = await sb.from("jobs").update({ active: !j.active }).eq("id", j.id);
+      if (er) return toast(errMsg(er), "error");
+      route();
+    }));
+  }
+  $$("[data-jbf]", v).forEach((c) => (c.onclick = () => { AD.jbF = c.dataset.jbf; route(); }));
+}
+function jobForm(j = {}) {
+  const fields = (j.fields || []).map((x) => ({ ...x }));
+  const fm = j.file_mode || "optional";
+  openModal(`<h2>${j.id ? "Edit job" : "Add job"}</h2><form id="jf">
+    <label>Job title</label><input name="title" required maxlength="100" value="${esc(j.title || "")}" placeholder="e.g. Delivery rider">
+    <div class="grid-2"><div><label>Salary <span class="muted">(optional)</span></label><input name="salary" maxlength="60" value="${esc(j.salary || "")}" placeholder="e.g. NPR 20,000 / month"></div>
+      <div><label>Place <span class="muted">(optional)</span></label><input name="location" maxlength="60" value="${esc(j.location || "")}" placeholder="e.g. Kathmandu"></div></div>
+    <label>Details</label><textarea name="details" maxlength="3000" rows="4">${esc(j.details || "")}</textarea>
+    <label>Photo or CV (PDF)</label><div class="row" style="gap:14px;flex-wrap:wrap">
+      <label class="jrad"><input type="radio" name="file_mode" value="required" ${fm === "required" ? "checked" : ""}> Must add</label>
+      <label class="jrad"><input type="radio" name="file_mode" value="optional" ${fm === "optional" ? "checked" : ""}> Optional</label>
+      <label class="jrad"><input type="radio" name="file_mode" value="off" ${fm === "off" ? "checked" : ""}> Don't ask</label></div>
+    <div class="setting-row mt"><b>Open (customers can apply)</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${j.active !== false ? "checked" : ""}><span></span></label></div>
+    <h3 class="mt">Questions</h3><p class="small muted">Name, Member ID, phone and email are sent automatically.</p>
+    <div id="jfields"></div><button type="button" class="btn soft block mt" id="addJF">${ICONS.plus} Add question</button>
+    <button class="btn block mt" id="saveJ">Save job</button></form>`, (md) => {
+    const f = $("#jf", md);
+    const fb = mountFieldBuilder($("#jfields", md), fields, "No questions — only name, phone and the file.");
+    $("#addJF", md).onclick = fb.add;
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      let flds; try { flds = fb.collect(); } catch (err) { return toast(err.message, "error"); }
+      const row = { title: f.title.value.trim(), salary: f.salary.value.trim() || null, location: f.location.value.trim() || null,
+        details: f.details.value.trim(), file_mode: f.file_mode.value, active: f.active.checked, fields: flds };
+      busy($("#saveJ", md), async () => {
+        const { error } = j.id ? await sb.from("jobs").update(row).eq("id", j.id) : await sb.from("jobs").insert(row);
+        if (error) throw error;
+        closeModal(); toast("Job saved.", "success"); route();
+      });
+    };
+  });
 }
 
 /* ---------------- PRODUCTS (with custom order form) ---------------- */
