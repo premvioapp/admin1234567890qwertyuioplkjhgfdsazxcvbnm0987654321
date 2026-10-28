@@ -1191,6 +1191,10 @@ body.ag-chat-on .ag-nav { display: none; }
 @media (max-width: 420px) { .dr-row { grid-template-columns: 1fr auto; } .dr-row .dr-v { grid-column: 1 / 2; grid-row: 2; } }
 .pm-conv { margin-top: 6px; font-size: .9rem; padding: 8px 12px; border-radius: 10px; background: rgba(31, 162, 255, .1); border: 1px solid rgba(31, 162, 255, .3); }
 .pm-conv b { color: var(--blue); font-size: 1rem; }
+.cur-row { display: grid; grid-template-columns: auto 1fr auto 1fr auto; gap: 8px; align-items: start; }
+.cur-row .cur-t { padding-top: 12px; }
+.cur-row input { margin: 0; min-width: 0; }
+.cur-row .cur-t { font-weight: 800; font-size: 1.05rem; }
 
 </style>
 <title>Premvio Admin</title>
@@ -4124,8 +4128,11 @@ function methodForm(m, agentsList) {
     ${forAgents ? "" : `<div class="grid-2"><div><label>Minimum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="min" min="0" step="0.01" value="${m.min_amount ?? ""}"></div>
     <div><label>Maximum (${CFG.CURRENCY}) <span class="muted">optional</span></label><input type="number" name="max" min="0" step="0.01" value="${m.max_amount ?? ""}"></div></div>`}
     ${dep ? `<label>Pays in another currency <span class="muted">(optional — empty = ${CFG.CURRENCY})</span></label>
-    <div class="grid-2"><div><input name="pay_currency" maxlength="10" value="${esc(m.pay_currency || "")}" placeholder="e.g. USD" style="text-transform:uppercase"></div>
-      <div><input type="number" name="pay_rate" min="0" step="0.0001" value="${m.pay_rate ?? ""}" placeholder="${CFG.CURRENCY} for 1 (e.g. 151)" inputmode="decimal"></div></div>
+    <div class="cur-row"><span class="cur-t">1</span>
+      <div><input name="pay_currency" maxlength="10" value="${esc(m.pay_currency || "")}" placeholder="USD" aria-label="Currency name" autocomplete="off" style="text-transform:uppercase"><div class="small muted">Currency name</div></div>
+      <span class="cur-t">=</span>
+      <div><input type="number" name="pay_rate" min="0" step="0.0001" value="${m.pay_rate ?? ""}" placeholder="151" aria-label="Rate in ${CFG.CURRENCY}" inputmode="decimal"><div class="small muted">Rate</div></div>
+      <span class="cur-t">${CFG.CURRENCY}</span></div>
     <p class="small muted" id="curHint"></p>` : ""}
     <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
     ${forAgents ? `<label>Which agents can use it</label>
@@ -4154,7 +4161,8 @@ function methodForm(m, agentsList) {
     const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No fields added." : "No extra fields — only the amount.");
     if (f.pay_currency) {
       const ch = () => { const c = f.pay_currency.value.trim().toUpperCase(), r = Number(f.pay_rate.value);
-        $("#curHint", md).innerHTML = c && r > 0 ? `1 ${esc(c)} = ${CFG.CURRENCY} ${r} · e.g. ${CFG.CURRENCY} 5,000 → they pay <b>${esc(fmtCur(pmPayAmt(5000, r), c))}</b>. The amount box is always shown for this method.`
+        $("#curHint", md).innerHTML = c && !/^[A-Z][A-Z0-9]{1,9}$/.test(c) ? `<span style="color:var(--red)">Write the currency name in the first box (like USD or USDT), not a number.</span>`
+          : c && r > 0 ? `1 ${esc(c)} = ${CFG.CURRENCY} ${r} · e.g. ${CFG.CURRENCY} 5,000 → they pay <b>${esc(fmtCur(pmPayAmt(5000, r), c))}</b>. The amount box is always shown for this method.`
           : c || f.pay_rate.value ? `<span style="color:var(--red)">Fill both: currency and rate.</span>` : ""; };
       f.pay_currency.oninput = ch; f.pay_rate.oninput = ch; ch();
     }
@@ -4203,7 +4211,7 @@ function methodForm(m, agentsList) {
       if (f.pay_currency) {
         pay_currency = f.pay_currency.value.trim().toUpperCase();
         pay_rate = f.pay_rate.value === "" ? null : Number(f.pay_rate.value);
-        if (pay_currency && !/^[A-Z0-9]{1,10}$/.test(pay_currency)) return toast("Currency: letters/numbers only, e.g. USD or USDT.", "error");
+        if (pay_currency && !/^[A-Z][A-Z0-9]{1,9}$/.test(pay_currency)) return toast("First box = currency name, like USD or USDT (not a number).", "error");
         if (pay_currency && !(pay_rate > 0)) return toast(`Enter the rate: how much ${CFG.CURRENCY} for 1 ${pay_currency}.`, "error");
         if (!pay_currency && pay_rate != null) return toast("Enter the currency (e.g. USD) or clear the rate.", "error");
         if (!pay_currency) pay_rate = null;
