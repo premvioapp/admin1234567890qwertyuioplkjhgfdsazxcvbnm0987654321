@@ -1284,6 +1284,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
+const PV_BUILD = "V81";   // shown in the admin + manager menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -2085,7 +2086,7 @@ function start(p) {
   root.innerHTML = `
   <div class="panel">
     <aside class="sidebar" id="side">
-      <div class="brand"><img src="${PV_LOGO}" alt=""><div>Premvio<div class="small muted">Admin · ${esc(p.member_id)}</div></div></div>
+      <div class="brand"><img src="${PV_LOGO}" alt=""><div>Premvio<div class="small muted">Admin · ${esc(p.member_id)} · ${PV_BUILD}</div></div></div>
       <div class="side-search"><input id="sideQ" type="search" placeholder="Search menu… (e.g. deposit)" autocomplete="off"></div>
       ${SECTIONS.map((s) => `<button class="side-link" data-s="${s.id}">${s.icon}<span>${s.label}</span>${s.count ? `<span class="count hidden" data-count="${s.count}"></span>` : ""}</button>`).join("")}
       <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
@@ -2836,8 +2837,8 @@ async function managers(v) {
     sb.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer").is("manager_id", null),
     sb.from("app_settings").select("value").eq("key", "mgr_auto").maybeSingle()]);
   const auto = st?.value === "true";
-  v.innerHTML = `<p class="small muted">Each customer can have one account manager. The manager handles that customer's “request a password change”
-      (only after KYC is approved and the ID card was checked) on <b>manager.html</b>. Make managers in <a href="#agents">Staff → Add staff → Account manager</a>.</p>
+  v.innerHTML = `<p class="small muted">Premvio managers work on <b>manager.html</b>. Each customer can have one manager (password requests, notes).
+      Press <b>🔑 What it can do</b> to switch on KYC, help chats, deposits, withdrawals and more, with a money limit. Make managers in <a href="#agents">Staff → Add staff → Premvio manager</a>.</p>
     <div class="card"><div class="setting-row"><div><b>Give new customers to managers automatically</b>
       <div class="small muted">Each new sign-up goes to the manager with the fewest customers.</div></div>
       <label class="switch" style="margin:0"><input type="checkbox" id="mgAuto" ${auto ? "checked" : ""}><span></span></label></div>
@@ -2846,7 +2847,7 @@ async function managers(v) {
     ${table(["Manager", "Customers", "Waiting requests", "Changed (30 days)", ""], list.map((m) => `<tr>
       <td><b>${esc(m.full_name)}</b><div class="mono small muted">${esc(m.member_id)}</div>${m.blocked ? `<span class="badge blocked">blocked</span>` : ""}</td>
       <td><b>${m.customers}</b></td><td>${m.pending ? `<span class="badge pending">${m.pending}</span>` : "0"}</td><td>${m.done_30d}</td>
-      <td style="white-space:nowrap"><button class="btn sm" data-mgn="${m.id}">Give unassigned</button>
+      <td style="white-space:nowrap"><button class="btn sm" data-mgperm="${m.id}">🔑 What it can do</button><button class="btn sm soft" data-mgn="${m.id}">Give unassigned</button>
         <button class="btn sm soft" data-mgp="${m.id}">Pick customers</button><a class="btn sm ghost" href="#agents/${m.id}">Open</a></td></tr>`),
       "No account managers yet — add one in Staff → Add staff")}`;
   $("#mgAuto").onchange = async (e) => {
@@ -2855,6 +2856,11 @@ async function managers(v) {
     toast(e.target.checked ? "New customers will get a manager automatically." : "Automatic giving is off.", "success");
   };
   $("#mgPick").onclick = () => pickCustomers(null);
+  $$("[data-mgperm]", v).forEach((b) => (b.onclick = async () => {
+    const { data: u, error } = await sb.from("profiles").select("*").eq("id", b.dataset.mgperm).single();
+    if (error) return toast(errMsg(error), "error");
+    managerPermsForm(u);
+  }));
   $$("[data-mgp]", v).forEach((b) => (b.onclick = () => pickCustomers(b.dataset.mgp)));
   $$("[data-mgn]", v).forEach((b) => (b.onclick = () => {
     const m = list.find((x) => x.id === b.dataset.mgn);
@@ -4106,7 +4112,7 @@ const STAFF_ROLES = {
 function staffForm(u) {
   const edit = !!u;
   openModal(`<h2>${edit ? "Edit " + esc(u.member_id) : "Add staff"}</h2><form id="sf">
-    ${edit ? "" : `<label>Role</label><select name="srole"><option value="agent">Agent</option><option value="marketing">Marketing manager</option><option value="support">Support</option><option value="admin">Admin</option></select>
+    ${edit ? "" : `<label>Role</label><select name="srole">${Object.entries(STAFF_ROLES).map(([k, x]) => `<option value="${k}">${x.label}</option>`).join("")}</select>
     <p class="small muted" id="roleHint"></p>
     <label>Login ID <span class="muted">(optional — leave empty for automatic)</span></label>
     <input name="login_id" maxlength="20" autocomplete="off" spellcheck="false" style="text-transform:uppercase" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{2,19}" title="3–20 letters or numbers, no spaces">`}
