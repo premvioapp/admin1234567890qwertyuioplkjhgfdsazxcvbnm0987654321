@@ -1207,6 +1207,7 @@ body.ag-chat-on .ag-nav { display: none; }
 .stat.big .v { font-size: 1.5rem; }
 .maint-bar { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 159, 67, .14); border: 1px solid rgba(255, 159, 67, .55); color: #ff9f43; font-weight: 700; display: flex; gap: 10px; align-items: center; line-height: 1.4; }
 .maint-bar svg { width: 22px; height: 22px; flex: none; }
+.ga-img.full { max-height: none; object-fit: contain; }
 
 </style>
 <title>Premvio Admin</title>
@@ -2814,7 +2815,7 @@ function giveawayForm(g = {}) {
       <div><label>Times one customer can join</label><input type="number" name="maxe" min="1" max="100" value="${g.max_entries ?? 1}"></div>
       <div><label>Display order</label><input type="number" name="sort" value="${g.sort ?? 0}"></div></div>
     <label>Details / rules</label><textarea name="details" maxlength="3000" rows="4" placeholder="e.g. Invite 3 friends with our code, take a screenshot and upload it.">${esc(g.details || "")}</textarea>
-    <label>Details customers can copy <span class="muted">(you choose each name — their own ID is shown automatically)</span></label>
+    <label>Details customers can copy <span class="muted">(you choose each name, e.g. Special code)</span></label>
     <div id="garows"></div><button type="button" class="btn soft sm mt" id="addGR">${ICONS.plus} Add detail</button>
     <div class="setting-row mt"><b>Visible to customers</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${g.active !== false ? "checked" : ""}><span></span></label></div>
     <h3 class="mt">What the customer fills in</h3><p class="small muted">A photo proof is always asked. Name and Member ID are saved automatically.</p>
