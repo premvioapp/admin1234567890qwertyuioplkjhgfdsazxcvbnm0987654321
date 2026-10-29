@@ -1235,6 +1235,12 @@ body.ag-chat-on .ag-nav { display: none; }
 .fab-help svg { width: 26px; height: 26px; }
 body.wa-mode .fab-help { display: none; }
 .badge.guest-chat { background: rgba(255, 176, 32, .18); color: #ffb020; }
+/* V80 manager permissions */
+.mp-row { display: flex !important; align-items: flex-start; gap: 10px; padding: 10px 0; margin: 0 !important; border-bottom: 1px solid var(--line); color: var(--text) !important; cursor: pointer; }
+.mp-row input { width: auto !important; margin: 3px 0 0 !important; }
+.mp-row small { display: block; color: var(--muted); font-weight: 500; }
+.mg-limits { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; color: var(--muted); }
+.mg-limits b { color: var(--text); }
 
 </style>
 <title>Premvio Admin</title>
@@ -1954,23 +1960,8 @@ async function pwRequestsView(v, opts = {}) {
   })));
 }
 
-</script>
-<script>
-/* ============ PREMVIO — Admin panel (v2) ============ */
-const AD = { me: null, stats: {}, channel: null, orderFilter: "pending", userQ: "", wdFilter: "pending", kycFilter: "pending", txType: "all", staffQ: "" };
-const root = $("#root");
 
-sb.auth.getSession().then(async ({ data }) => {
-  if (data.session) {
-    try {
-      const p = await getMyProfile();
-      if (p && p.role === "admin" && !p.blocked) return mfaGate(p, start);
-      await pvSignOut();
-    } catch (e) {}
-  }
-  staffLogin(root, "Admin", ["admin"], (p) => mfaGate(p, start));
-});
-
+/* V80: moved here from admin.js so admin AND manager panels use the same two-step login */
 /* ---------------- TWO-STEP LOGIN (authenticator app code) ---------------- */
 function mfaScreen(inner) {
   root.innerHTML = `<div class="auth-wrap"><div class="auth-box">
@@ -2033,6 +2024,24 @@ async function mfaEnroll(p, next) {
   bindOtp($("#otpf"), data.id, p, next);
 }
 
+
+</script>
+<script>
+/* ============ PREMVIO — Admin panel (v2) ============ */
+const AD = { me: null, stats: {}, channel: null, orderFilter: "pending", userQ: "", wdFilter: "pending", kycFilter: "pending", txType: "all", staffQ: "" };
+const root = $("#root");
+
+sb.auth.getSession().then(async ({ data }) => {
+  if (data.session) {
+    try {
+      const p = await getMyProfile();
+      if (p && p.role === "admin" && !p.blocked) return mfaGate(p, start);
+      await pvSignOut();
+    } catch (e) {}
+  }
+  staffLogin(root, "Admin", ["admin"], (p) => mfaGate(p, start));
+});
+
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: ICONS.grid },
   { id: "orders", label: "Orders", icon: ICONS.bag, count: "pending_orders" },
@@ -2050,7 +2059,7 @@ const SECTIONS = [
   { id: "errors", label: "Error log", icon: ICONS.shield, count: "new_errors" },
   { id: "jobs", label: "Jobs", icon: ICONS.idcard },
   { id: "customers", label: "Customers", icon: ICONS.users },
-  { id: "managers", label: "Account managers", icon: ICONS.users },
+  { id: "managers", label: "Managers", icon: ICONS.users },
   { id: "pwreq", label: "Password requests", icon: ICONS.lock, count: "pending_pwreq" },
   { id: "agents", label: "Staff (agents, admins, marketing, support)", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
@@ -2757,6 +2766,43 @@ function jobForm(j = {}) {
 }
 
 /* ---------------- 👤 ACCOUNT MANAGERS (V78) ---------------- */
+const MGR_PERMS = [
+  ["kyc", "KYC review", "Approve or reject KYC (sees the ID photo)"],
+  ["help", "Help chats", "Answers help chats like support (customers and guests)"],
+  ["giveaways", "Giveaways", "Picks winners and pays prizes — up to the limit"],
+  ["sells", "Sell requests", "Buys from customers ('Sell to Premvio') — up to the limit"],
+  ["deposits", "Customer deposits", "Approves customer deposit requests — up to the limit"],
+  ["payouts", "Withdrawal requests", "Marks withdrawal requests paid — up to the limit"],
+  ["agent_money", "Agent deposits + delivery pay", "Approves agent deposits and pays agents for deliveries — up to the limit"]];
+async function managerPermsForm(u) {
+  const perms = u.mgr_perms || {};
+  const { data: log } = await sb.from("manager_money_log").select("*").eq("manager_id", u.id).order("created_at", { ascending: false }).limit(30);
+  openModal(`<h2>${esc(u.member_id)} — what this manager can do</h2>
+    <p class="small muted">Always also: password requests and private notes for the customers you give them. Never: adding or taking money by hand,
+      payment methods, prices, settings, staff, commission, profit, maintenance. Managers must log in with the 6-digit code.</p>
+    <form id="mpf">${MGR_PERMS.map(([k, l, h]) => `<label class="mp-row"><input type="checkbox" name="p_${k}" ${perms[k] ? "checked" : ""}>
+        <span class="grow"><b>${l}</b><small>${h}</small></span></label>`).join("")}
+      <div class="grid-2 mt"><div><label>Limit per approval (${CFG.CURRENCY})</label><input type="number" name="lim" min="0" step="1" value="${Number(u.mgr_limit || 0)}"></div>
+        <div><label>Daily total (${CFG.CURRENCY})</label><input type="number" name="day" min="0" step="1" value="${Number(u.mgr_day_limit || 0)}"></div></div>
+      <p class="small muted">0 = this manager can't approve any money. Bigger amounts wait for you.</p>
+      <button class="btn block mt">Save</button></form>
+    <h3 class="mt">Money they approved (last 30)</h3>
+    ${(log || []).length ? log.map((x) => `<div class="list-item"><div class="grow"><b>${money(x.amount)}</b> · ${esc(x.kind)}${x.ref_id ? " #" + x.ref_id : ""}</div>
+      <span class="small muted">${fmtDate(x.created_at)}</span></div>`).join("") : `<p class="small muted">Nothing yet.</p>`}`, (md) => {
+    $("#mpf", md).onsubmit = (e) => {
+      e.preventDefault();
+      const f = e.target, out = {};
+      MGR_PERMS.forEach(([k]) => { if (f["p_" + k].checked) out[k] = true; });
+      const lim = Math.max(0, Number(f.lim.value) || 0), day = Math.max(0, Number(f.day.value) || 0);
+      if (day < lim) return toast("The daily total must be at least the limit per approval.", "error");
+      busy($("button.btn", f), async () => {
+        const { error } = await sb.rpc("admin_set_manager_perms", { p_user: u.id, p_perms: out, p_limit: lim, p_day_limit: day });
+        if (error) throw /admin_set_manager_perms/.test(error.message || "") ? new Error("Run 55-update-premvio-managers.sql in Supabase first.") : error;
+        closeModal(); toast("Saved. The manager sees the change after logging in again or refreshing.", "success"); route();
+      });
+    };
+  });
+}
 async function drawNotes(box, u) {
   const { data, error } = await sb.from("customer_notes").select("*").eq("user_id", u.id).order("created_at", { ascending: false }).limit(100);
   if (error) { box.innerHTML = `<p class="small muted">Notes need update 54.</p>`; return; }
@@ -4054,7 +4100,7 @@ const STAFF_ROLES = {
   agent: { label: "Agent", page: "agent.html", hint: "Tops up customers and pays out PremvioCash codes. Has a cash balance." },
   marketing: { label: "Marketing manager", page: "marketing.html", hint: "Sees sales numbers (no customer names or money), pins products, edits the moving message, sends push messages to customers and manages the New page. Cannot touch money, orders, KYC or staff." },
   support: { label: "Support", page: "support.html", hint: "Answers help chats: accepts waiting chats, replies and marks them solved. Sees only waiting chats and the chats they accepted. Sees the customer's name, ID, balance, recent orders, deposits and withdrawals. Cannot change anything else." },
-  manager: { label: "Account manager", page: "manager.html", hint: "Looks after the customers you give them: handles “request a password change” (only after KYC is approved and the ID card was checked on Telegram) and sees their customers' details. No balances, no money, no orders." },
+  manager: { label: "Premvio manager", page: "manager.html", hint: "Looks after the customers you give them (password requests, notes). After creating, open the manager and press “What this manager can do” to switch on KYC, help chats, deposits, withdrawals and more — with a money limit. Needs the 6-digit code to log in." },
   admin: { label: "Admin", page: "admin.html", hint: "Full access to everything. Needs two-step login." },
 };
 function staffForm(u) {
@@ -4131,7 +4177,8 @@ async function personView(v, id, back) {
       ${staff ? `<button class="btn sm soft" id="edit">Edit details</button><button class="btn sm soft" id="cid">Change login ID</button><button class="btn sm soft" id="pw">Reset password</button>
         <button class="btn sm soft" id="role">Change role</button>
         ${u.role === "agent" ? `<button class="btn sm soft" id="comm">💰 Commission ${Number(u.commission_load || 0)}%</button><a class="btn sm soft" href="#agentcomm/${u.id}">Commission details</a>` : ""}
-        ${u.role === "admin" && u.id !== AD.me.id ? `<button class="btn sm soft" id="mfaReset">Reset two-step login</button>` : ""}` : ""}
+        ${(u.role === "admin" || u.role === "manager") && u.id !== AD.me.id ? `<button class="btn sm soft" id="mfaReset">Reset two-step login</button>` : ""}
+        ${u.role === "manager" ? `<button class="btn sm" id="mgrPerms">🔑 What this manager can do</button>` : ""}` : ""}
       ${staff ? "" : `<button class="btn sm soft" id="setMgr">👤 Manager: ${esc(u.manager_id ? ((AD.mgrs || []).find((m) => m.id === u.manager_id)?.member_id || "assigned") : "none")}</button>`}
       <button class="btn sm soft" id="unlock">Unlock login</button>
       ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>
@@ -4188,6 +4235,7 @@ async function personView(v, id, back) {
   });
   if ($("#comm")) $("#comm").onclick = () => commissionModal(u, reload);
   if ($("#notesBox")) drawNotes($("#notesBox"), u);
+  if ($("#mgrPerms")) $("#mgrPerms").onclick = () => managerPermsForm(u);
   if ($("#setMgr")) $("#setMgr").onclick = () => openModal(`<h2>Account manager of ${esc(u.member_id)}</h2><form id="smf">
       <select name="m"><option value="">No manager</option>${(AD.mgrs || []).map((m) => `<option value="${m.id}" ${u.manager_id === m.id ? "selected" : ""}>${esc(m.member_id)} — ${esc(m.full_name)}</option>`).join("")}</select>
       <button class="btn block mt">Save</button></form>`, (md) => {
