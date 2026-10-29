@@ -1208,6 +1208,10 @@ body.ag-chat-on .ag-nav { display: none; }
 .maint-bar { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 159, 67, .14); border: 1px solid rgba(255, 159, 67, .55); color: #ff9f43; font-weight: 700; display: flex; gap: 10px; align-items: center; line-height: 1.4; }
 .maint-bar svg { width: 22px; height: 22px; flex: none; }
 .ga-img.full { max-height: none; object-fit: contain; }
+/* V77 marketing */
+.mk-aud { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255, 79, 216, .1); border: 1px solid rgba(255, 79, 216, .35); font-size: .9rem; }
+.mk-res { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: .82rem; color: var(--muted); }
+.mk-res b { color: var(--text); }
 
 </style>
 <title>Premvio Admin</title>
@@ -4121,7 +4125,8 @@ async function notify(v) {
     const box = $("#mkList"); if (!box) return;
     box.innerHTML = error ? `<p class="small muted">Run update 18 to see marketing messages.</p>` : data.length ? data.map((c) => `<div class="list-item"><div class="ic">📣</div>
       <div class="grow"><b>${esc(c.title)}</b><div class="small muted">${esc(c.body)}</div>
-      <div class="small muted">${fmtDate(c.created_at)} · ${c.recipients} customers · by ${esc(c.profiles?.member_id || "—")} ${esc(c.profiles?.full_name || "")}</div></div></div>`).join("")
+      <div class="small muted">${c.status === "scheduled" ? `⏰ scheduled for ${fmtDate(c.send_at)}` : c.status === "cancelled" ? "🚫 cancelled" : `${fmtDate(c.sent_at || c.created_at)} · ${c.recipients} customers`}
+        · ${esc(c.segment_label || "All customers")} · by ${esc(c.profiles?.member_id || "—")} ${esc(c.profiles?.full_name || "")}</div></div></div>`).join("")
       : `<p class="small muted">Nothing sent by marketing yet.</p>`;
   });
   const f = $("#nf");
