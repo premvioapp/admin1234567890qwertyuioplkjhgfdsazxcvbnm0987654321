@@ -1284,7 +1284,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V81";   // shown in the admin + manager menu so the owner can see which version is loaded
+const PV_BUILD = "V82";   // shown in the admin + manager menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -2025,6 +2025,76 @@ async function mfaEnroll(p, next) {
   bindOtp($("#otpf"), data.id, p, next);
 }
 
+
+/* ============ V82 "Ask my manager" (support, marketing, agent panels) ============
+   teamView(v, threadId, opts) — opts.base = hash prefix of this page ("team"), opts.me = my profile */
+async function teamView(v, id, opts = {}) {
+  const base = opts.base || "team";
+  if (window.PV_TEAM_CH) { sb.removeChannel(window.PV_TEAM_CH); window.PV_TEAM_CH = null; }
+  if (id) return teamThread(v, id, opts);
+  const [{ data: mgr }, { data: list, error }] = await Promise.all([sb.rpc("my_manager"),
+    sb.from("tickets").select("*").eq("user_id", opts.me.id).eq("kind", "staff").order("updated_at", { ascending: false }).limit(50)]);
+  if (error) { v.innerHTML = `<div class="card">${/kind/.test(error.message || "") ? "Ask the admin to run update 56." : esc(errMsg(error))}</div>`; return; }
+  v.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="big-avatar" style="margin:0;width:44px;height:44px">${ICONS.user}</div>
+      <div>${mgr ? `<b>${esc(mgr.full_name || "")}</b> <span class="mono small muted">${esc(mgr.member_id)}</span><div class="small muted">Your manager — they get a notification and answer when they can.</div>`
+        : `<b>No manager yet</b><div class="small muted">Ask the admin to give you a manager.</div>`}</div></div></div>
+    ${mgr ? `<div class="card"><h3 style="margin-top:0">New question</h3><form id="tqf">
+      <label>Topic</label><input name="s" required maxlength="80" placeholder="e.g. Customer wants a refund">
+      <label>Your question</label><textarea name="b" required maxlength="1000" rows="3"></textarea>
+      <button class="btn block mt">${ICONS.send} Send to my manager</button></form></div>` : ""}
+    <h3>My questions</h3>
+    ${(list || []).length ? list.map((t) => `<a class="card sp-item" href="#${base}/${t.id}" style="display:block;color:inherit;text-decoration:none">
+      <div class="row between" style="gap:8px"><b>${esc(t.subject)}</b><span class="small muted">${fmtDate(t.updated_at)}</span></div>
+      <div class="mt">${t.status === "closed" ? `<span class="badge completed">solved</span>` : t.waiting_for === "customer" ? `<span class="badge agent">manager replied</span>` : `<span class="badge pending">waiting for manager</span>`}</div></a>`).join("")
+      : `<div class="empty">No questions yet</div>`}`;
+  if ($("#tqf")) $("#tqf").onsubmit = (e) => {
+    e.preventDefault();
+    busy($("button", e.target), async () => {
+      const { data: tid, error: er } = await sb.rpc("staff_ask_manager", { p_subject: e.target.s.value.trim(), p_body: e.target.b.value.trim() });
+      if (er) throw er;
+      toast("Sent to your manager.", "success"); location.hash = `${base}/${tid}`;
+    });
+  };
+}
+async function teamThread(v, id, opts) {
+  const base = opts.base || "team";
+  const [{ data: t, error }, { data: msgs }] = await Promise.all([
+    sb.from("tickets").select("*").eq("id", id).single(),
+    sb.from("ticket_messages").select("*").eq("ticket_id", id).order("created_at")]);
+  if (error || !t) { location.hash = base; return; }
+  const open = t.status === "open";
+  v.innerHTML = `<a class="back-link" href="#${base}">← My questions</a>
+    <div class="card"><div class="row between" style="gap:8px"><h2 style="margin:0">${esc(t.subject)}</h2>
+      ${open ? `<button class="btn sm success" id="tSolved">Solved</button>` : `<span class="badge completed">solved</span>`}</div>
+      <div class="chat admin-chat" id="tBox"></div>
+      <form id="trf" class="chat-input" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write…" required></textarea>
+        <button class="btn" aria-label="Send">${ICONS.send}</button></form></div>`;
+  const box = $("#tBox"), seen = new Set();
+  // my messages on the right, the manager's on the left
+  const add = (m) => { if (seen.has(m.id)) return; seen.add(m.id);
+    box.insertAdjacentHTML("beforeend", m.kind === "system" ? `<div class="chat-sys">${esc(m.body)}</div>`
+      : `<div class="bubble ${m.from_staff ? "them" : "me"}">${m.from_staff ? `<div class="who">Manager</div>` : ""}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`);
+    box.scrollTop = box.scrollHeight; };
+  (msgs || []).forEach(add);
+  window.PV_TEAM_CH = sb.channel("team-" + id).on("postgres_changes", { event: "INSERT", schema: "public", table: "ticket_messages", filter: `ticket_id=eq.${id}` }, (x) => add(x.new)).subscribe();
+  const f = $("#trf");
+  f.m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !/Android|iPhone/i.test(navigator.userAgent)) { e.preventDefault(); f.requestSubmit(); } };
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    const body = f.m.value.trim(); if (!body) return;
+    busy($("button", f), async () => {
+      const { data: mid, error: er } = await sb.rpc("send_ticket_message", { p_ticket: id, p_body: body });
+      if (er) throw er;
+      f.m.value = ""; add({ id: mid, from_staff: false, kind: "msg", body, created_at: new Date().toISOString() });
+      if (!open) teamThread(v, id, opts);
+    });
+  };
+  if ($("#tSolved")) $("#tSolved").onclick = async () => {
+    const { error: er } = await sb.rpc("close_ticket", { p_ticket: id });
+    if (er) return toast(errMsg(er), "error");
+    location.hash = base;
+  };
+}
 
 </script>
 <script>
@@ -2844,9 +2914,9 @@ async function managers(v) {
       <label class="switch" style="margin:0"><input type="checkbox" id="mgAuto" ${auto ? "checked" : ""}><span></span></label></div>
       <div class="row mt" style="gap:8px;flex-wrap:wrap"><span class="small muted"><b>${unassigned ?? 0}</b> customers have no manager.</span>
         <button class="btn sm soft" id="mgPick">Pick customers by hand</button></div></div>
-    ${table(["Manager", "Customers", "Waiting requests", "Changed (30 days)", ""], list.map((m) => `<tr>
+    ${table(["Manager", "Customers", "Team", "Waiting requests", "Changed (30 days)", ""], list.map((m) => `<tr>
       <td><b>${esc(m.full_name)}</b><div class="mono small muted">${esc(m.member_id)}</div>${m.blocked ? `<span class="badge blocked">blocked</span>` : ""}</td>
-      <td><b>${m.customers}</b></td><td>${m.pending ? `<span class="badge pending">${m.pending}</span>` : "0"}</td><td>${m.done_30d}</td>
+      <td><b>${m.customers}</b></td><td>${m.team ?? 0}</td><td>${m.pending ? `<span class="badge pending">${m.pending}</span>` : "0"}</td><td>${m.done_30d}</td>
       <td style="white-space:nowrap"><button class="btn sm" data-mgperm="${m.id}">🔑 What it can do</button><button class="btn sm soft" data-mgn="${m.id}">Give unassigned</button>
         <button class="btn sm soft" data-mgp="${m.id}">Pick customers</button><a class="btn sm ghost" href="#agents/${m.id}">Open</a></td></tr>`),
       "No account managers yet — add one in Staff → Add staff")}`;
@@ -3504,7 +3574,7 @@ async function help(v) {
   v.innerHTML = `<p class="muted small">Support staff answer these at <b>support.html</b>. You can answer here too.</p>
     ${chips([["waiting", "Waiting for me"], ["open", "All open"], ["closed", "Solved"], ["all", "All"], ["team", "Support team"]], AD.hF, "hf")}
     ${table(["#", "Customer", "Topic", "Status", "Last update", ""], data.map((t) => `<tr>
-      <td>${t.id}</td><td>${t.profiles ? who(t.profiles) : `${esc(t.guest_name || "Guest")}<div class="small muted">${esc(t.guest_contact || "")}</div><span class="badge guest-chat">GUEST</span>`}${t.profiles?.role === "agent" ? `<span class="badge agent-chat">Premvio Agent</span>` : ""}</td><td><b>${esc(t.subject)}</b>${t.order_id ? `<div class="small muted">Order #${t.order_id}</div>` : ""}</td>
+      <td>${t.id}</td><td>${t.profiles ? who(t.profiles) : `${esc(t.guest_name || "Guest")}<div class="small muted">${esc(t.guest_contact || "")}</div><span class="badge guest-chat">GUEST</span>`}${t.profiles?.role === "agent" ? `<span class="badge agent-chat">Premvio Agent</span>` : ""}</td><td><b>${esc(t.subject)}</b>${t.kind === "staff" ? ` <span class="badge agent">TEAM question</span>` : ""}${t.escalated_by ? ` <span class="badge pending">🆘 passed to manager</span>` : ""}${t.order_id ? `<div class="small muted">Order #${t.order_id}</div>` : ""}</td>
       <td>${t.status === "closed" ? `<span class="badge completed">solved</span>` : !t.accepted_at ? `<span class="badge pending">waiting to accept</span>` : t.waiting_for === "admin" ? `<span class="badge pending">needs reply</span>` : `<span class="badge agent">replied</span>`}</td>
       <td class="small">${fmtDate(t.updated_at)}</td><td><a class="btn sm" href="#help/${t.id}">Open</a></td></tr>`), "No chats here 🎉")}`;
   $$("[data-hf]", v).forEach((c) => (c.onclick = () => { AD.hF = c.dataset.hf; route(); }));
@@ -3547,7 +3617,7 @@ async function helpThreadAdmin(v, id) {
           <button class="btn" aria-label="Send">${ICONS.send}</button></form>
         <div class="row mt" style="gap:6px;flex-wrap:wrap">${["Hi! We're checking this now 👍", "Your order has been delivered ✅", "Please send a screenshot of your payment.", "Sorry for the wait! It's done now."]
           .map((q) => `<button type="button" class="btn sm soft" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>
-      <div class="card">${!t.profiles ? `<h3 style="margin-top:0">Guest <span class="badge guest-chat">no account</span></h3><b>${esc(t.guest_name || "")}</b>
+      <div class="card">${t.escalate_note ? `<div class="dup-box" style="border-color:rgba(255,176,32,.6);color:#ffb020;background:rgba(255,176,32,.1)">🆘 Passed to a manager: ${esc(t.escalate_note)}</div>` : ""}${t.kind === "staff" ? `<p><span class="badge agent">TEAM question</span> from staff to their manager</p>` : ""}${!t.profiles ? `<h3 style="margin-top:0">Guest <span class="badge guest-chat">no account</span></h3><b>${esc(t.guest_name || "")}</b>
         <div class="small mt">Contact: <b>${esc(t.guest_contact || "—")}</b></div>
         <p class="small muted">Not logged in — never change a password from a guest chat.</p>` : `<h3 style="margin-top:0">${t.profiles?.role === "agent" ? `Premvio Agent <span class="badge agent-chat">agent</span>` : "Customer"}</h3>${who(t.profiles)}
         <div class="small mt">Balance: <b>${money(t.profiles?.balance || 0)}</b> · Phone: ${esc(t.profiles?.phone || "—")}</div>
@@ -4185,7 +4255,7 @@ async function personView(v, id, back) {
         ${u.role === "agent" ? `<button class="btn sm soft" id="comm">💰 Commission ${Number(u.commission_load || 0)}%</button><a class="btn sm soft" href="#agentcomm/${u.id}">Commission details</a>` : ""}
         ${(u.role === "admin" || u.role === "manager") && u.id !== AD.me.id ? `<button class="btn sm soft" id="mfaReset">Reset two-step login</button>` : ""}
         ${u.role === "manager" ? `<button class="btn sm" id="mgrPerms">🔑 What this manager can do</button>` : ""}` : ""}
-      ${staff ? "" : `<button class="btn sm soft" id="setMgr">👤 Manager: ${esc(u.manager_id ? ((AD.mgrs || []).find((m) => m.id === u.manager_id)?.member_id || "assigned") : "none")}</button>`}
+      ${staff && !["agent", "support", "marketing"].includes(u.role) ? "" : `<button class="btn sm soft" id="setMgr">👤 Manager: ${esc(u.manager_id ? ((AD.mgrs || []).find((m) => m.id === u.manager_id)?.member_id || "assigned") : "none")}</button>`}
       <button class="btn sm soft" id="unlock">Unlock login</button>
       ${u.id !== AD.me.id ? `<button class="btn sm ${u.blocked ? "success" : "danger"}" id="blk">${u.blocked ? "Unblock" : "Block"}</button>
         <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}

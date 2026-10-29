@@ -1235,6 +1235,12 @@ body.ag-chat-on .ag-nav { display: none; }
 .fab-help svg { width: 26px; height: 26px; }
 body.wa-mode .fab-help { display: none; }
 .badge.guest-chat { background: rgba(255, 176, 32, .18); color: #ffb020; }
+/* V80 manager permissions */
+.mp-row { display: flex !important; align-items: flex-start; gap: 10px; padding: 10px 0; margin: 0 !important; border-bottom: 1px solid var(--line); color: var(--text) !important; cursor: pointer; }
+.mp-row input { width: auto !important; margin: 3px 0 0 !important; }
+.mp-row small { display: block; color: var(--muted); font-weight: 500; }
+.mg-limits { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; color: var(--muted); }
+.mg-limits b { color: var(--text); }
 
 </style>
 <title>Premvio Account Manager</title>
@@ -1278,6 +1284,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
+const PV_BUILD = "V82";   // shown in the admin + manager menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -1954,6 +1961,141 @@ async function pwRequestsView(v, opts = {}) {
   })));
 }
 
+
+/* V80: moved here from admin.js so admin AND manager panels use the same two-step login */
+/* ---------------- TWO-STEP LOGIN (authenticator app code) ---------------- */
+function mfaScreen(inner) {
+  root.innerHTML = `<div class="auth-wrap"><div class="auth-box">
+    <img src="${PV_LOGO}" class="auth-logo" alt="Premvio"><div class="card">${inner}
+    <p class="center small mt"><button type="button" class="link-btn" id="mfaOut">Log out</button></p></div></div></div>`;
+  $("#mfaOut").onclick = async () => { await pvSignOut(); location.reload(); };
+}
+async function mfaGate(p, next) {
+  root.innerHTML = `<div class="loader"></div>`;
+  const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal && aal.currentLevel === "aal2") return next(p);
+  const { data: f } = await sb.auth.mfa.listFactors();
+  const ok = (f?.totp || []).filter((x) => x.status === "verified");
+  return ok.length ? mfaCode(ok[0].id, p, next) : mfaEnroll(p, next);
+}
+function bindOtp(form, factorId, p, next) {
+  const inp = form.code;
+  inp.oninput = () => { inp.value = inp.value.replace(/\D/g, "").slice(0, 6); if (inp.value.length === 6) form.requestSubmit ? form.requestSubmit() : form.onsubmit(new Event("submit")); };
+  form.onsubmit = (e) => {
+    e.preventDefault?.();
+    if (inp.value.length !== 6) return toast("Enter the 6-digit code.", "error");
+    busy($("button.btn", form), async () => {
+      const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code: inp.value });
+      if (error) { inp.value = ""; inp.focus(); throw new Error(/invalid|expired/i.test(error.message) ? "Wrong or expired code. Try the new code in your app." : error.message); }
+      toast("Two-step login verified.", "success");
+      next(p);
+    });
+  };
+  setTimeout(() => inp.focus(), 50);
+}
+function mfaCode(factorId, p, next) {
+  mfaScreen(`<h2 class="center">Two-step login</h2>
+    <p class="center muted small">Open your authenticator app and enter the 6-digit code for <b>Premvio</b>.</p>
+    <form id="otpf"><input name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+    <button class="btn block mt">Verify</button></form>
+    <p class="small muted center mt">Lost your phone? Another admin can reset it, or run <b>reset-admin-2fa.sql</b> in Supabase.</p>`);
+  bindOtp($("#otpf"), factorId, p, next);
+}
+async function mfaEnroll(p, next) {
+  const { data: f } = await sb.auth.mfa.listFactors();
+  for (const x of (f?.all || []).filter((x) => x.status !== "verified")) await sb.auth.mfa.unenroll({ factorId: x.id });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Premvio " + p.member_id + " " + Date.now() });
+  if (error) {
+    mfaScreen(`<h2>Two-step login not available</h2><p class="muted">${esc(error.message)}</p>
+      <p class="small">In Supabase go to <b>Authentication → Multi-Factor</b> (or Sign In / Providers → MFA) and turn on <b>TOTP (App Authenticator)</b>, then log in again.</p>`);
+    return;
+  }
+  mfaScreen(`<h2 class="center">Set up two-step login</h2>
+    <p class="muted small center">Admins must use a code from their phone. You only set this up once.</p>
+    <ol class="steps small">
+      <li>Install <b>Google Authenticator</b> or <b>Microsoft Authenticator</b> on your phone.</li>
+      <li>In the app tap <b>+</b> → <b>Scan a QR code</b> and scan this:</li></ol>
+    <div class="qr-box"><img src="${esc(data.totp.qr_code)}" alt="QR code"></div>
+    <p class="small muted center">Can't scan? Enter this key in the app:<br><b class="mono" style="word-break:break-all">${esc(data.totp.secret)}</b>
+      <button type="button" class="link-btn small" id="cpk">copy</button></p>
+    <ol class="steps small" start="3"><li>Type the 6-digit code the app shows:</li></ol>
+    <form id="otpf"><input name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+    <button class="btn block mt">Turn on two-step login</button></form>`);
+  $("#cpk").onclick = () => copyText(data.totp.secret);
+  bindOtp($("#otpf"), data.id, p, next);
+}
+
+
+/* ============ V82 "Ask my manager" (support, marketing, agent panels) ============
+   teamView(v, threadId, opts) — opts.base = hash prefix of this page ("team"), opts.me = my profile */
+async function teamView(v, id, opts = {}) {
+  const base = opts.base || "team";
+  if (window.PV_TEAM_CH) { sb.removeChannel(window.PV_TEAM_CH); window.PV_TEAM_CH = null; }
+  if (id) return teamThread(v, id, opts);
+  const [{ data: mgr }, { data: list, error }] = await Promise.all([sb.rpc("my_manager"),
+    sb.from("tickets").select("*").eq("user_id", opts.me.id).eq("kind", "staff").order("updated_at", { ascending: false }).limit(50)]);
+  if (error) { v.innerHTML = `<div class="card">${/kind/.test(error.message || "") ? "Ask the admin to run update 56." : esc(errMsg(error))}</div>`; return; }
+  v.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="big-avatar" style="margin:0;width:44px;height:44px">${ICONS.user}</div>
+      <div>${mgr ? `<b>${esc(mgr.full_name || "")}</b> <span class="mono small muted">${esc(mgr.member_id)}</span><div class="small muted">Your manager — they get a notification and answer when they can.</div>`
+        : `<b>No manager yet</b><div class="small muted">Ask the admin to give you a manager.</div>`}</div></div></div>
+    ${mgr ? `<div class="card"><h3 style="margin-top:0">New question</h3><form id="tqf">
+      <label>Topic</label><input name="s" required maxlength="80" placeholder="e.g. Customer wants a refund">
+      <label>Your question</label><textarea name="b" required maxlength="1000" rows="3"></textarea>
+      <button class="btn block mt">${ICONS.send} Send to my manager</button></form></div>` : ""}
+    <h3>My questions</h3>
+    ${(list || []).length ? list.map((t) => `<a class="card sp-item" href="#${base}/${t.id}" style="display:block;color:inherit;text-decoration:none">
+      <div class="row between" style="gap:8px"><b>${esc(t.subject)}</b><span class="small muted">${fmtDate(t.updated_at)}</span></div>
+      <div class="mt">${t.status === "closed" ? `<span class="badge completed">solved</span>` : t.waiting_for === "customer" ? `<span class="badge agent">manager replied</span>` : `<span class="badge pending">waiting for manager</span>`}</div></a>`).join("")
+      : `<div class="empty">No questions yet</div>`}`;
+  if ($("#tqf")) $("#tqf").onsubmit = (e) => {
+    e.preventDefault();
+    busy($("button", e.target), async () => {
+      const { data: tid, error: er } = await sb.rpc("staff_ask_manager", { p_subject: e.target.s.value.trim(), p_body: e.target.b.value.trim() });
+      if (er) throw er;
+      toast("Sent to your manager.", "success"); location.hash = `${base}/${tid}`;
+    });
+  };
+}
+async function teamThread(v, id, opts) {
+  const base = opts.base || "team";
+  const [{ data: t, error }, { data: msgs }] = await Promise.all([
+    sb.from("tickets").select("*").eq("id", id).single(),
+    sb.from("ticket_messages").select("*").eq("ticket_id", id).order("created_at")]);
+  if (error || !t) { location.hash = base; return; }
+  const open = t.status === "open";
+  v.innerHTML = `<a class="back-link" href="#${base}">← My questions</a>
+    <div class="card"><div class="row between" style="gap:8px"><h2 style="margin:0">${esc(t.subject)}</h2>
+      ${open ? `<button class="btn sm success" id="tSolved">Solved</button>` : `<span class="badge completed">solved</span>`}</div>
+      <div class="chat admin-chat" id="tBox"></div>
+      <form id="trf" class="chat-input" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write…" required></textarea>
+        <button class="btn" aria-label="Send">${ICONS.send}</button></form></div>`;
+  const box = $("#tBox"), seen = new Set();
+  // my messages on the right, the manager's on the left
+  const add = (m) => { if (seen.has(m.id)) return; seen.add(m.id);
+    box.insertAdjacentHTML("beforeend", m.kind === "system" ? `<div class="chat-sys">${esc(m.body)}</div>`
+      : `<div class="bubble ${m.from_staff ? "them" : "me"}">${m.from_staff ? `<div class="who">Manager</div>` : ""}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`);
+    box.scrollTop = box.scrollHeight; };
+  (msgs || []).forEach(add);
+  window.PV_TEAM_CH = sb.channel("team-" + id).on("postgres_changes", { event: "INSERT", schema: "public", table: "ticket_messages", filter: `ticket_id=eq.${id}` }, (x) => add(x.new)).subscribe();
+  const f = $("#trf");
+  f.m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !/Android|iPhone/i.test(navigator.userAgent)) { e.preventDefault(); f.requestSubmit(); } };
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    const body = f.m.value.trim(); if (!body) return;
+    busy($("button", f), async () => {
+      const { data: mid, error: er } = await sb.rpc("send_ticket_message", { p_ticket: id, p_body: body });
+      if (er) throw er;
+      f.m.value = ""; add({ id: mid, from_staff: false, kind: "msg", body, created_at: new Date().toISOString() });
+      if (!open) teamThread(v, id, opts);
+    });
+  };
+  if ($("#tSolved")) $("#tSolved").onclick = async () => {
+    const { error: er } = await sb.rpc("close_ticket", { p_ticket: id });
+    if (er) return toast(errMsg(er), "error");
+    location.hash = base;
+  };
+}
+
 </script>
 <script>
 /* ============ PREMVIO — Account manager panel (V78) ============
@@ -1966,26 +2108,40 @@ sb.auth.getSession().then(async ({ data }) => {
   if (data.session) {
     try {
       const p = await getMyProfile();
-      if (p && p.role === "manager" && !p.blocked) return start(p);
+      if (p && p.role === "manager" && !p.blocked) return mfaGate(p, start);
       await pvSignOut();
     } catch (e) {}
   }
-  staffLogin(root, "Manager", ["manager"], start);
+  staffLogin(root, "Manager", ["manager"], (p) => mfaGate(p, start));   // V80: managers need the 6-digit code
 });
 
-const MG_SECTIONS = [
+// pages; "perm" = shown only when the admin ticked it for this manager
+const MG_ALL = [
   { id: "requests", label: "Password requests", icon: ICONS.lock },
   { id: "customers", label: "My customers", icon: ICONS.users },
+  { id: "chats", label: "Help chats", icon: ICONS.chat },          // passed-on chats always; waiting chats only with the "help" tick box
+  { id: "team", label: "Team questions", icon: ICONS.users },
+  { id: "kyc", label: "KYC review", icon: ICONS.idcard, perm: "kyc" },
+  { id: "deposits", label: "Customer deposits", icon: ICONS.cash, perm: "deposits" },
+  { id: "payouts", label: "Withdrawal requests", icon: ICONS.wallet, perm: "payouts" },
+  { id: "agentdeposits", label: "Agent deposits", icon: ICONS.cash, perm: "agent_money" },
+  { id: "agentpay", label: "Agent delivery pay", icon: ICONS.bag, perm: "agent_money" },
+  { id: "sells", label: "Sell requests", icon: ICONS.coins, perm: "sells" },
+  { id: "giveaways", label: "Giveaways", icon: ICONS.trophy, perm: "giveaways" },
   { id: "profile", label: "My account", icon: ICONS.user },
 ];
+let MG_SECTIONS = MG_ALL;
 
-function start(p) {
+async function start(p) {
   MG.me = p;
+  const { data: lim } = await sb.rpc("mgr_my_limits");
+  MG.lim = lim || { perms: {}, limit: 0, day_limit: 0, used_today: 0 };
+  MG_SECTIONS = MG_ALL.filter((x) => !x.perm || (MG.lim.perms || {})[x.perm]);
   applyTheme("dark");
   root.innerHTML = `
   <div class="panel">
     <aside class="sidebar" id="side">
-      <div class="brand"><img src="${PV_LOGO}" alt=""><div>Premvio<div class="small muted">Manager · ${esc(p.member_id)}</div></div></div>
+      <div class="brand"><img src="${PV_LOGO}" alt=""><div>Premvio<div class="small muted">Manager · ${esc(p.member_id)} · ${PV_BUILD}</div></div></div>
       ${MG_SECTIONS.map((s) => `<button class="side-link" data-s="${s.id}">${s.icon}<span>${s.label}</span>${s.id === "requests" ? `<span class="count hidden" id="reqCount"></span>` : ""}</button>`).join("")}
       <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
       <button class="side-link" id="pushBtn">${ICONS.bell}<span>Notifications</span></button>
@@ -2013,13 +2169,19 @@ function section() {
   const s = (location.hash || "#requests").slice(1).split("/")[0];
   return MG_SECTIONS.find((x) => x.id === s) ? s : "requests";
 }
+function hashArg() { return decodeURIComponent(location.hash.slice(1).split("/")[1] || ""); }
 function route() {
   const s = section();
   $$(".side-link[data-s]").forEach((b) => b.classList.toggle("on", b.dataset.s === s));
   $("#ptitle").textContent = MG_SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  ({ requests, customers, profile })[s](v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
+  if (MG.ch) { sb.removeChannel(MG.ch); MG.ch = null; }
+  const pages = { requests, customers, profile, chats: (x) => (hashArg() ? chat(x, Number(hashArg())) : chats(x)),
+    team: (x) => (hashArg() ? chat(x, Number(hashArg()), "team") : teamPage(x)), kyc: kycPage,
+    deposits: (x) => depositsPage(x, "customer"), agentdeposits: (x) => depositsPage(x, "agent"), payouts: payoutsPage, agentpay: agentPayPage,
+    sells: sellsPage, giveaways: giveawaysPage };
+  pages[s](v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
   window.scrollTo(0, 0);
 }
 async function refreshCount() {
@@ -2108,9 +2270,13 @@ async function customerDetail(v, member) {
 
 async function profile(v) {
   const p = MG.me;
+  await refreshLimits();
+  const can = MG_ALL.filter((x) => x.perm && (MG.lim.perms || {})[x.perm]).map((x) => x.label);
   v.innerHTML = `<div class="card" style="max-width:620px">
     <div class="row"><div class="big-avatar" style="margin:0">${ICONS.user}</div><div><h2 style="margin:0">${esc(p.full_name)}</h2>
-      <div class="mono muted">${esc(p.member_id)}</div><span class="badge agent">account manager</span></div></div></div>
+      <div class="mono muted">${esc(p.member_id)}</div><span class="badge agent">Premvio manager</span></div></div>
+    <h3>What you can do</h3><p class="small">Password requests and notes for your customers${can.length ? ", " + can.map(esc).join(", ") : ""}.</p></div>
+  <div style="max-width:620px">${limitsBar()}</div>
   <div class="card" style="max-width:620px">
     <h3 style="margin-top:0">Change password</h3>
     <form id="pwf" autocomplete="off">
@@ -2133,6 +2299,352 @@ async function profile(v) {
       f.reset(); toast("Password changed.", "success");
     });
   };
+}
+
+
+/* ============ V80: Premvio manager work pages (only what the admin ticked) ============ */
+async function refreshLimits() { const { data } = await sb.rpc("mgr_my_limits"); if (data) MG.lim = data; }
+function limitsBar() {
+  const l = MG.lim || {}, left = Math.max(0, Number(l.day_limit || 0) - Number(l.used_today || 0));
+  return Number(l.day_limit) > 0
+    ? `<div class="card mg-limits"><span>Your limit: <b>${money(l.limit)}</b> per approval</span><span>Daily total: <b>${money(l.day_limit)}</b></span><span>Left today: <b>${money(left)}</b></span>
+        <span>Bigger amounts wait for the admin.</span></div>`
+    : `<div class="card mg-limits"><span>You can't approve money yet — the admin set your limit to 0. You can still reject.</span></div>`;
+}
+const stChips = (cur, attr, list = [["pending", "Waiting"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]]) =>
+  `<div class="chips">${list.map(([k, l]) => `<button class="chip ${cur === k ? "on" : ""}" data-${attr}="${k}">${l}</button>`).join("")}</div>`;
+const fv = (fd) => (fd || []).filter((x) => x.value).map((x) => `<div class="kv"><span>${esc(x.label)}:</span> <b>${esc(x.value)}</b>
+  <button class="link-btn small" onclick="copyText(this.dataset.v)" data-v="${esc(x.value)}">copy</button></div>`).join("");
+async function showProof(bucket, path) {
+  const { data: u, error } = await sb.storage.from(bucket).createSignedUrl(path, 600);
+  if (error) return toast(errMsg(error), "error");
+  openModal(`<h2>Picture</h2><img src="${esc(u.signedUrl)}" alt="" style="width:100%;border-radius:12px;background:#000">
+    <p class="small muted mt"><a href="${esc(u.signedUrl)}" target="_blank" rel="noopener">Open full size</a></p>`);
+}
+function bindProofs(v, bucket) { $$("[data-proof]", v).forEach((b) => (b.onclick = () => showProof(bucket, b.dataset.proof))); }
+function rejectModal(title, label, onOk) {
+  openModal(`<h2>${title}</h2><form id="rjf"><label>${label}</label><input name="note" required maxlength="200">
+    <button class="btn danger block mt">Reject</button></form>`, (m) => {
+    $("#rjf", m).onsubmit = (e) => { e.preventDefault(); busy($("button", e.target), async () => { await onOk(e.target.note.value.trim()); closeModal(); }); };
+  });
+}
+
+/* ---------- KYC ---------- */
+async function kycPage(v) {
+  MG.kf = MG.kf || "pending";
+  const { data, error } = await sb.rpc("mgr_kyc", { p_status: MG.kf });
+  if (error) throw error;
+  v.innerHTML = stChips(MG.kf, "kf") + (data.length ? data.map((k) => `<div class="card">
+    <div class="row between wrap"><div><b>${esc(k.account_name)}</b> <span class="mono small muted">${esc(k.member_id)}</span></div><span class="badge ${k.status}">${k.status}</span></div>
+    <div class="pw-grid mt"><div><span class="muted small">Name on ID</span><b>${esc(k.full_name)}</b></div>
+      <div><span class="muted small">Document</span><b>${esc(k.doc_type)} · <span class="mono">${esc(k.doc_number)}</span></b></div>
+      <div><span class="muted small">Address</span><b>${esc(k.city)}, ${esc(k.region)}</b></div>
+      <div><span class="muted small">Account</span><b>${esc(k.email || "")}</b><span class="small">${esc(k.phone || "")} · ${esc(k.country || "")}</span></div></div>
+    ${k.note ? `<p class="small muted">Note: ${esc(k.note)}</p>` : ""}
+    <div class="row mt" style="gap:8px;flex-wrap:wrap">${k.photo_path ? `<button class="btn sm soft" data-proof="${esc(k.photo_path)}">🪪 View photo</button>` : `<span class="small muted">No photo</span>`}
+      ${k.status === "pending" ? `<button class="btn sm success" data-kok="${k.user_id}">Approve</button><button class="btn sm ghost" data-kno="${k.user_id}">Reject</button>` : ""}</div></div>`).join("")
+    : `<div class="empty">Nothing here</div>`);
+  $$("[data-kf]", v).forEach((c) => (c.onclick = () => { MG.kf = c.dataset.kf; route(); }));
+  bindProofs(v, "kyc");
+  $$("[data-kok]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Approve KYC?", "Only if the name and document number match the photo.", "Approve"))) return;
+    const { error: er } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.kok, p_approve: true, p_note: null });
+    if (er) return toast(errMsg(er), "error");
+    toast("KYC approved.", "success"); route();
+  }));
+  $$("[data-kno]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject KYC</h2><form id="kjf">
+      <label>Reason (the customer sees it)</label><input name="note" required maxlength="200" placeholder="e.g. Photo not clear">
+      <label class="jrad" style="display:flex !important;margin-top:10px !important"><input type="checkbox" name="ph"> Ask for a document photo</label>
+      <button class="btn danger block mt">Reject</button></form>`, (m) => {
+    $("#kjf", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.kno, p_approve: false, p_note: e.target.note.value.trim(), p_require_photo: e.target.ph.checked });
+        if (er) throw er;
+        closeModal(); toast("Rejected.", "success"); route();
+      });
+    };
+  })));
+}
+
+/* ---------- deposits (customer or agent) ---------- */
+async function sha256Hex(blob) {
+  const buf = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function depositsPage(v, role) {
+  const key = role === "agent" ? "adf" : "df";
+  MG[key] = MG[key] || "pending";
+  await refreshLimits();
+  const { data, error } = await sb.rpc("mgr_deposits", { p_status: MG[key], p_role: role });
+  if (error) throw error;
+  // fingerprint new screenshots so a re-sent file shows a warning (max 15 per load)
+  MG.hashTried = MG.hashTried || new Set();
+  const todo = data.filter((d) => d.proof_path && !d.proof_hash && d.status === "pending" && !MG.hashTried.has(d.id)).slice(0, 15);
+  if (todo.length) {
+    for (const d of todo) {
+      MG.hashTried.add(d.id);
+      try { const { data: blob } = await sb.storage.from("proofs").download(d.proof_path); if (blob) await sb.rpc("admin_set_proof_hash", { p_id: d.id, p_hash: await sha256Hex(blob) }); } catch (e) {}
+    }
+    return depositsPage(v, role);
+  }
+  const warn = (d) => [d.dup_img?.length ? `Same screenshot as deposit #${d.dup_img.join(", #")}` : "", d.dup_ref?.length ? `Same transaction ID as deposit #${d.dup_ref.join(", #")}` : ""].filter(Boolean);
+  v.innerHTML = limitsBar() + stChips(MG[key], key) + (data.length ? data.map((d) => `<div class="card">
+    <div class="row between wrap"><div><b>${esc(d.full_name)}</b> <span class="mono small muted">${esc(d.member_id)}</span> · ${esc(d.method_name)}</div>
+      <span class="small muted">#${d.id} · ${fmtDate(d.created_at)}</span></div>
+    <div class="mt"><b style="font-size:1.2rem">${d.amount != null ? money(d.amount) : `<span class="muted">amount: you type it</span>`}</b>
+      ${d.pay_currency && d.pay_amount != null ? ` <span class="small">· should have paid <b>${esc(Number(d.pay_amount).toFixed(2) + " " + d.pay_currency)}</b></span>` : ""}</div>
+    ${fv(d.form_data)}
+    ${warn(d).length ? `<div class="dup-box">${warn(d).map((x) => `<div>⚠️ ${esc(x)}</div>`).join("")}</div>` : ""}
+    <div class="row mt" style="gap:8px;flex-wrap:wrap">${d.proof_path ? `<button class="btn sm soft" data-proof="${esc(d.proof_path)}">🧾 Screenshot</button>` : ""}
+      ${d.status === "pending" ? `<button class="btn sm success" data-dok="${d.id}">Approve</button><button class="btn sm ghost" data-dno="${d.id}">Reject</button>`
+        : `<span class="badge ${d.status === "approved" ? "completed" : d.status}">${d.status}</span>${d.admin_note ? ` <span class="small muted">${esc(d.admin_note)}</span>` : ""}`}</div></div>`).join("")
+    : `<div class="empty">Nothing here</div>`);
+  $$(`[data-${key}]`, v).forEach((c) => (c.onclick = () => { MG[key] = c.dataset[key]; route(); }));
+  bindProofs(v, "proofs");
+  $$("[data-dok]", v).forEach((b) => (b.onclick = () => {
+    const d = data.find((x) => x.id == b.dataset.dok), needAmt = role === "agent" || d.amount == null || !!d.pay_currency;
+    openModal(`<h2>Approve deposit #${d.id}</h2><p>${esc(d.full_name)} (${esc(d.member_id)}) · ${esc(d.method_name)}</p>
+      ${warn(d).length ? `<div class="dup-box">${warn(d).map((x) => `<div>⚠️ ${esc(x)}</div>`).join("")}</div>` : ""}
+      <form id="daf">${needAmt ? `<label>Amount you received (${CFG.CURRENCY})</label><input type="number" name="amt" min="1" step="0.01" required value="${d.amount != null ? Number(d.amount) : ""}">` : `<p><b>${money(d.amount)}</b> is added to their balance.</p>`}
+        <p class="small muted">Only approve after you see the money in the Premvio account. Your limit: ${money(MG.lim.limit)} each.</p>
+        <button class="btn success block mt">Approve</button></form>`, (m) => {
+      $("#daf", m).onsubmit = (e) => {
+        e.preventDefault();
+        const amt = needAmt ? Number(e.target.amt.value) : null;
+        if (needAmt && !(amt > 0)) return toast("Enter the amount.", "error");
+        busy($("button", e.target), async () => {
+          const { error: er } = await sb.rpc("admin_review_deposit", needAmt ? { p_id: d.id, p_approve: true, p_note: null, p_amount: amt } : { p_id: d.id, p_approve: true, p_note: null });
+          if (er) throw er;
+          closeModal(); toast("Approved — money added.", "success"); route();
+        });
+      };
+    });
+  }));
+  $$("[data-dno]", v).forEach((b) => (b.onclick = () => rejectModal(`Reject deposit #${b.dataset.dno}`, "Reason (shown to them)", async (note) => {
+    const { error: er } = await sb.rpc("admin_review_deposit", { p_id: Number(b.dataset.dno), p_approve: false, p_note: note });
+    if (er) throw er; toast("Rejected.", "success"); route();
+  })));
+}
+
+/* ---------- withdrawal requests ---------- */
+async function payoutsPage(v) {
+  MG.pf = MG.pf || "pending";
+  await refreshLimits();
+  const { data, error } = await sb.rpc("mgr_payouts", { p_status: MG.pf });
+  if (error) throw error;
+  v.innerHTML = limitsBar() + stChips(MG.pf, "pf", [["pending", "Waiting"], ["paid", "Paid"], ["rejected", "Rejected"], ["all", "All"]]) + (data.length ? data.map((w) => `<div class="card">
+    <div class="row between wrap"><div><b>${esc(w.full_name)}</b> <span class="mono small muted">${esc(w.member_id)}</span> · ${esc(w.method_name)}</div>
+      <span class="small muted">#${w.id} · ${fmtDate(w.created_at)}</span></div>
+    <div class="mt"><b style="font-size:1.2rem">${money(w.amount)}</b></div>${fv(w.form_data)}
+    <div class="row mt" style="gap:8px">${w.status === "pending" ? `<button class="btn sm success" data-pok="${w.id}">I sent the money</button><button class="btn sm ghost" data-pno="${w.id}">Reject</button>`
+      : `<span class="badge ${w.status === "paid" ? "completed" : w.status}">${w.status}</span>${w.admin_note ? ` <span class="small muted">${esc(w.admin_note)}</span>` : ""}`}</div></div>`).join("")
+    : `<div class="empty">Nothing here</div>`);
+  $$("[data-pf]", v).forEach((c) => (c.onclick = () => { MG.pf = c.dataset.pf; route(); }));
+  $$("[data-pok]", v).forEach((b) => (b.onclick = async () => {
+    const w = data.find((x) => x.id == b.dataset.pok);
+    if (!(await confirmBox(`Paid ${money(w.amount)}?`, `Only press this after you sent <b>${money(w.amount)}</b> to ${esc(w.full_name)} via ${esc(w.method_name)}.`, "Yes, I sent it"))) return;
+    const { error: er } = await sb.rpc("admin_review_payout", { p_id: w.id, p_paid: true, p_note: null });
+    if (er) return toast(errMsg(er), "error");
+    toast("Marked paid.", "success"); route();
+  }));
+  $$("[data-pno]", v).forEach((b) => (b.onclick = () => rejectModal(`Reject withdrawal #${b.dataset.pno}`, "Reason (the money goes back to their balance)", async (note) => {
+    const { error: er } = await sb.rpc("admin_review_payout", { p_id: Number(b.dataset.pno), p_paid: false, p_note: note });
+    if (er) throw er; toast("Rejected — money returned to the customer.", "success"); route();
+  })));
+}
+
+/* ---------- agent delivery pay ---------- */
+async function agentPayPage(v) {
+  await refreshLimits();
+  const { data, error } = await sb.rpc("mgr_agent_pay");
+  if (error) throw error;
+  const agents = [...new Set(data.map((o) => o.agent_id))];
+  v.innerHTML = limitsBar() + (agents.length ? agents.map((a) => {
+    const list = data.filter((o) => o.agent_id === a), total = list.reduce((s, o) => s + Number(o.agent_pay || 0), 0);
+    return `<div class="card"><div class="row between wrap"><b>${esc(list[0].agent_name)} <span class="mono small muted">${esc(list[0].agent_member)}</span></b>
+        <button class="btn sm success" data-apay="${a}">Pay ${money(total)}</button></div>
+      ${list.map((o) => `<div class="list-item"><div class="grow"><b>#${o.id}</b> ${esc(o.product_name)} × ${o.quantity}<div class="small muted">delivered ${fmtDate(o.agent_done_at)}</div></div>
+        <b>${money(o.agent_pay || 0)}</b><button class="link-btn small" data-ano="${o.id}">Don't pay</button></div>`).join("")}</div>`; }).join("")
+    : `<div class="empty">No delivery payments waiting</div>`);
+  $$("[data-apay]", v).forEach((b) => (b.onclick = async () => {
+    const list = data.filter((o) => o.agent_id === b.dataset.apay), total = list.reduce((s, o) => s + Number(o.agent_pay || 0), 0);
+    if (!(await confirmBox(`Pay ${money(total)}?`, `${list.length} delivered order(s) — the money goes to ${esc(list[0].agent_name)}'s balance now.`, "Pay now"))) return;
+    const { error: er } = await sb.rpc("admin_pay_agent_orders", { p_agent: b.dataset.apay, p_orders: list.map((o) => o.id) });
+    if (er) return toast(errMsg(er), "error");
+    toast("Paid.", "success"); route();
+  }));
+  $$("[data-ano]", v).forEach((b) => (b.onclick = () => rejectModal(`Don't pay order #${b.dataset.ano}`, "Reason (the agent sees it)", async (note) => {
+    const { error: er } = await sb.rpc("admin_review_agent_pay", { p_order: Number(b.dataset.ano), p_approve: false, p_note: note });
+    if (er) throw er; toast("Not paid.", "success"); route();
+  })));
+}
+
+/* ---------- sell requests ---------- */
+async function sellsPage(v) {
+  MG.sf = MG.sf || "pending";
+  await refreshLimits();
+  const { data, error } = await sb.rpc("mgr_sells", { p_status: MG.sf });
+  if (error) throw error;
+  v.innerHTML = limitsBar() + stChips(MG.sf, "sf", [["pending", "Waiting"], ["approved", "Bought"], ["rejected", "Not accepted"], ["all", "All"]]) + (data.length ? data.map((r) => `<div class="card">
+    <div class="row between wrap"><div><b>${esc(r.full_name)}</b> <span class="mono small muted">${esc(r.member_id)}</span></div><span class="small muted">#${r.id} · ${fmtDate(r.created_at)}</span></div>
+    <div class="mt"><b>${esc(r.item_name)}</b> × ${r.quantity} · asks <b>${money(r.amount)}</b>${r.paid_amount != null ? ` · paid ${money(r.paid_amount)}` : ""}</div>${fv(r.form_data)}
+    <div class="row mt" style="gap:8px;flex-wrap:wrap">${r.proof_path ? `<button class="btn sm soft" data-proof="${esc(r.proof_path)}">🧾 Screenshot</button>` : ""}
+      ${r.status === "pending" ? `<button class="btn sm success" data-sok="${r.id}">Buy &amp; pay</button><button class="btn sm ghost" data-sno="${r.id}">Reject</button>`
+        : `<span class="badge ${r.status === "approved" ? "completed" : r.status}">${r.status === "approved" ? "bought" : r.status}</span>`}</div></div>`).join("") : `<div class="empty">Nothing here</div>`);
+  $$("[data-sf]", v).forEach((c) => (c.onclick = () => { MG.sf = c.dataset.sf; route(); }));
+  bindProofs(v, "proofs");
+  $$("[data-sok]", v).forEach((b) => (b.onclick = () => {
+    const r = data.find((x) => x.id == b.dataset.sok);
+    openModal(`<h2>Buy #${r.id}: ${esc(r.item_name)} × ${r.quantity}</h2>${fv(r.form_data)}
+      <form id="sof"><label>Amount to pay (${CFG.CURRENCY})</label><input type="number" name="amt" min="0.01" step="0.01" required value="${Number(r.amount)}">
+        <label>Note to customer <span class="muted">(optional)</span></label><input name="note" maxlength="200">
+        <p class="small muted">Only after you checked it works. Your limit: ${money(MG.lim.limit)} each.</p>
+        <button class="btn success block mt">Buy &amp; pay</button></form>`, (m) => {
+      $("#sof", m).onsubmit = (e) => {
+        e.preventDefault();
+        busy($("button", e.target), async () => {
+          const { error: er } = await sb.rpc("admin_review_sell", { p_id: r.id, p_approve: true, p_note: e.target.note.value.trim() || null, p_amount: Number(e.target.amt.value) });
+          if (er) throw er;
+          closeModal(); toast("Bought — money added to the customer.", "success"); route();
+        });
+      };
+    });
+  }));
+  $$("[data-sno]", v).forEach((b) => (b.onclick = () => rejectModal(`Don't buy #${b.dataset.sno}`, "Reason (the customer sees it)", async (note) => {
+    const { error: er } = await sb.rpc("admin_review_sell", { p_id: Number(b.dataset.sno), p_approve: false, p_note: note });
+    if (er) throw er; toast("Rejected.", "success"); route();
+  })));
+}
+
+/* ---------- giveaway entries ---------- */
+async function giveawaysPage(v) {
+  MG.gf = MG.gf || "pending";
+  await refreshLimits();
+  const { data, error } = await sb.rpc("mgr_giveaway_entries", { p_status: MG.gf });
+  if (error) throw error;
+  v.innerHTML = limitsBar() + stChips(MG.gf, "gf", [["pending", "Waiting"], ["selected", "Selected"], ["not_selected", "Not selected"], ["all", "All"]]) + (data.length ? data.map((e) => `<div class="card">
+    <div class="row between wrap"><div><b>${esc(e.full_name)}</b> <span class="mono small muted">${esc(e.member_id)}</span></div><span class="small muted">#${e.id} · ${fmtDate(e.created_at)}</span></div>
+    <div class="mt"><b>${esc(e.giveaway_title)}</b></div>${fv(e.form_data)}
+    <div class="row mt" style="gap:8px;flex-wrap:wrap"><button class="btn sm soft" data-proof="${esc(e.proof_path)}">🧾 Photo</button>
+      ${e.status === "pending" ? `<button class="btn sm success" data-gok="${e.id}">Select &amp; pay</button><button class="btn sm ghost" data-gno="${e.id}">Not selected</button>`
+        : `<span class="badge ${e.status === "selected" ? "completed" : "rejected"}">${e.status === "selected" ? "selected " + money(e.prize_paid) : "not selected"}</span>`}</div></div>`).join("") : `<div class="empty">Nothing here</div>`);
+  $$("[data-gf]", v).forEach((c) => (c.onclick = () => { MG.gf = c.dataset.gf; route(); }));
+  bindProofs(v, "proofs");
+  $$("[data-gok]", v).forEach((b) => (b.onclick = () => {
+    const e = data.find((x) => x.id == b.dataset.gok);
+    openModal(`<h2>Select #${e.id} — ${esc(e.giveaway_title)}</h2><form id="gof">
+      <label>Prize to pay (${CFG.CURRENCY})</label><input type="number" name="amt" min="0.01" step="0.01" required value="${e.prize_amount ?? ""}">
+      <label>Message <span class="muted">(optional)</span></label><input name="note" maxlength="200">
+      <p class="small muted">Your limit: ${money(MG.lim.limit)} each.</p><button class="btn success block mt">Select &amp; pay</button></form>`, (m) => {
+      $("#gof", m).onsubmit = (ev) => {
+        ev.preventDefault();
+        busy($("button", ev.target), async () => {
+          const { error: er } = await sb.rpc("admin_review_giveaway", { p_id: e.id, p_selected: true, p_amount: Number(ev.target.amt.value), p_note: ev.target.note.value.trim() || null });
+          if (er) throw er;
+          closeModal(); toast("Selected — prize paid.", "success"); route();
+        });
+      };
+    });
+  }));
+  $$("[data-gno]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Not selected?", "The customer gets a 'not selected this time' message.", "Not selected"))) return;
+    const { error: er } = await sb.rpc("admin_review_giveaway", { p_id: Number(b.dataset.gno), p_selected: false, p_note: null });
+    if (er) return toast(errMsg(er), "error");
+    route();
+  }));
+}
+
+/* ---------- help chats (same as the support panel) ---------- */
+async function chats(v) {
+  const canWait = !!(MG.lim?.perms || {}).help;
+  MG.cf2 = MG.cf2 || (canWait ? "waiting" : "mine");
+  if (!canWait && MG.cf2 === "waiting") MG.cf2 = "mine";
+  const { data, error } = await sb.rpc("support_chats", { p_filter: MG.cf2 });
+  if (error) throw error;
+  v.innerHTML = `${canWait ? "" : `<p class="small muted">Here you see chats your team passed to you. (Waiting chats need the “Help chats” switch from the admin.)</p>`}
+    <div class="chips">${[...(canWait ? [["waiting", "Waiting"]] : []), ["mine", "My chats"], ["closed", "Solved by me"]]
+      .map(([k, l]) => `<button class="chip ${MG.cf2 === k ? "on" : ""}" data-cf2="${k}">${l}</button>`).join("")}</div>
+    <div class="sp-list">${data.length ? data.map((t) => `<div class="card sp-item" data-open="${t.id}">
+      <div class="row between" style="gap:8px"><div style="min-width:0"><b>${esc(t.full_name || "Customer")}</b> <span class="small muted mono">${esc(t.member_id)}</span>${t.role === "agent" ? ` <span class="badge agent-chat">Premvio Agent</span>` : ""}${t.role === "guest" ? ` <span class="badge guest-chat">GUEST</span>` : ""}</div>
+        <span class="small muted" style="white-space:nowrap">${fmtDate(t.updated_at)}</span></div>
+      <div class="sp-sub"><b>${esc(t.subject)}</b> <span class="muted">#${t.id}</span>${t.escalated_by ? ` <span class="badge pending">🆘 from ${esc(t.escalated_by)}</span>` : ""}</div>
+      ${t.last_msg ? `<div class="small muted sp-last">${esc(t.last_msg)}</div>` : ""}
+      <div class="row between mt" style="gap:8px"><span>${t.status === "closed" ? `<span class="badge completed">solved</span>` : !t.accepted_at ? `<span class="badge pending">waiting</span>` : `<span class="badge agent">${t.mine ? "you" : esc(t.accepted_name || "accepted")}</span>`}</span>
+        ${t.status === "open" && !t.accepted_at ? `<button class="btn sm" data-acc="${t.id}">Accept</button>` : ""}</div></div>`).join("") : `<div class="empty">No chats here</div>`}</div>`;
+  $$("[data-cf2]", v).forEach((c) => (c.onclick = () => { MG.cf2 = c.dataset.cf2; route(); }));
+  $$("[data-open]", v).forEach((c) => (c.onclick = (e) => { if (!e.target.closest("[data-acc]")) location.hash = "chats/" + c.dataset.open; }));
+  $$("[data-acc]", v).forEach((b) => (b.onclick = () => busy(b, async () => {
+    const { error: er } = await sb.rpc("accept_ticket", { p_ticket: Number(b.dataset.acc) });
+    if (er) { toast(errMsg(er), "error"); route(); return; }
+    location.hash = "chats/" + b.dataset.acc;
+  })));
+}
+async function chat(v, id, back = "chats") {
+  const [{ data: t, error }, { data: msgs }, { data: info, error: e2 }] = await Promise.all([
+    sb.from("tickets").select("*").eq("id", id).single(),
+    sb.from("ticket_messages").select("*").eq("ticket_id", id).order("created_at"),
+    sb.rpc("support_ticket_info", { p_ticket: id })]);
+  if (error || e2 || !t) { toast("This chat was accepted by someone else.", "error"); location.hash = back; return; }
+  const open = t.status === "open", accepted = !!t.accepted_at;
+  v.innerHTML = `<a class="back-link" href="#${back}">← ${back === "team" ? "Team questions" : "All chats"}</a>
+    ${t.escalate_note ? `<div class="dup-box" style="border-color:rgba(255,176,32,.6);color:#ffb020;background:rgba(255,176,32,.1)">🆘 Note from your team: ${esc(t.escalate_note)}</div>` : ""}
+    <div class="grid-2 mk-two"><div class="card"><div class="row between" style="gap:8px"><div><h2 style="margin:0">${esc(t.subject)} <span class="muted small">#${t.id}</span></h2>
+        <div class="small muted">${esc(info.full_name || "")} · ${esc(info.member_id)}</div></div>
+        ${open ? `<button class="btn sm success" id="closeT">Mark solved</button>` : `<span class="badge completed">solved</span>`}</div>
+      <div class="chat admin-chat" id="chatBox"></div>
+      ${open && !accepted ? `<div class="sp-accept"><b>Waiting for support</b><button class="btn" id="accBtn">Accept chat</button></div>` : `
+      <form id="rf" class="chat-input" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write a reply…" required></textarea>
+        <button class="btn" aria-label="Send">${ICONS.send}</button></form>`}</div>
+      <div class="card">${info.role === "guest" ? `<h3 style="margin-top:0">Guest <span class="badge guest-chat">no account</span></h3><b>${esc(info.full_name || "")}</b>
+          <div class="small mt">Contact: <b>${esc(info.guest_contact || "—")}</b></div><p class="small muted">Never change a password from a guest chat.</p>`
+        : `<h3 style="margin-top:0">${info.role === "agent" ? "Premvio Agent" : "Customer"}</h3><b>${esc(info.full_name || "")}</b><div class="mono small muted">${esc(info.member_id)}</div>
+          <h4>Recent orders</h4>${(info.orders || []).map((o) => `<div class="sp-row"><div class="grow"><b>#${o.id}</b> ${esc(o.product_name)} × ${o.quantity}<div class="small muted">${fmtDate(o.created_at)}</div></div><span class="badge ${o.status}">${o.status}</span></div>`).join("") || `<div class="small muted">None</div>`}`}</div></div>`;
+  const box = $("#chatBox"), seen = new Set();
+  const add = (m) => { if (seen.has(m.id)) return; seen.add(m.id); box.insertAdjacentHTML("beforeend", staffBubble(m, info.full_name)); box.scrollTop = box.scrollHeight; };
+  (msgs || []).forEach(add);
+  MG.ch = sb.channel("mg-help-" + id).on("postgres_changes", { event: "INSERT", schema: "public", table: "ticket_messages", filter: `ticket_id=eq.${id}` }, (x) => add(x.new)).subscribe();
+  if ($("#accBtn")) $("#accBtn").onclick = () => busy($("#accBtn"), async () => { const { error: er } = await sb.rpc("accept_ticket", { p_ticket: id }); if (er) throw er; route(); });
+  const f = $("#rf");
+  if (f) {
+    f.m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !/Android|iPhone/i.test(navigator.userAgent)) { e.preventDefault(); f.requestSubmit(); } };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      const body = f.m.value.trim(); if (!body) return;
+      busy($("button", f), async () => {
+        const { data: mid, error: er } = await sb.rpc("send_ticket_message", { p_ticket: id, p_body: body });
+        if (er) throw er;
+        f.m.value = ""; add({ id: mid, from_staff: true, kind: "msg", body, created_at: new Date().toISOString() });
+        if (!open) route();
+      });
+    };
+  }
+  if ($("#closeT")) $("#closeT").onclick = async () => {
+    if (!(await confirmBox("Mark solved?", "The chat closes. They can open it again by replying.", "Mark solved"))) return;
+    const { error: er } = await sb.rpc("close_ticket", { p_ticket: id });
+    if (er) return toast(errMsg(er), "error");
+    location.hash = back;
+  };
+}
+
+/* ---------- V82 team questions (support, agents, marketing ask their manager) ---------- */
+async function teamPage(v) {
+  MG.tf = MG.tf || "open";
+  const [{ data: team }, { data, error }] = await Promise.all([sb.rpc("manager_team"), sb.rpc("support_chats", { p_filter: "team" })]);
+  if (error) throw error;
+  const list = (data || []).filter((t) => MG.tf === "all" || (MG.tf === "open" ? t.status === "open" : t.status === "closed"));
+  v.innerHTML = `<div class="card"><h3 style="margin-top:0">My team</h3>
+      ${(team || []).length ? team.map((m) => `<div class="list-item"><div class="grow"><b>${esc(m.full_name || "")}</b> <span class="mono small muted">${esc(m.member_id)}</span>
+        <div class="small muted">${esc(m.role)}${m.phone ? " · " + esc(m.phone) : ""}</div></div>${Number(m.open_questions) ? `<span class="badge pending">${m.open_questions} open</span>` : ""}
+        ${m.blocked ? `<span class="badge blocked">blocked</span>` : ""}</div>`).join("") : `<p class="small muted">No team yet — the admin gives support, agents and marketing people to you.</p>`}</div>
+    <div class="chips">${[["open", "Open"], ["closed", "Solved"], ["all", "All"]].map(([k, l]) => `<button class="chip ${MG.tf === k ? "on" : ""}" data-tf="${k}">${l}</button>`).join("")}</div>
+    ${list.length ? list.map((t) => `<a class="card sp-item" href="#team/${t.id}" style="display:block;color:inherit;text-decoration:none">
+      <div class="row between" style="gap:8px"><div><b>${esc(t.full_name || "")}</b> <span class="mono small muted">${esc(t.member_id)}</span> · ${esc(t.role)}</div>
+        <span class="small muted">${fmtDate(t.updated_at)}</span></div>
+      <div class="sp-sub"><b>${esc(t.subject)}</b></div>${t.last_msg ? `<div class="small muted sp-last">${esc(t.last_msg)}</div>` : ""}
+      <div class="mt">${t.status === "closed" ? `<span class="badge completed">solved</span>` : t.waiting_for === "admin" ? `<span class="badge pending">needs your answer</span>` : `<span class="badge agent">you replied</span>`}</div></a>`).join("")
+      : `<div class="empty">No questions here</div>`}`;
+  $$("[data-tf]", v).forEach((c) => (c.onclick = () => { MG.tf = c.dataset.tf; route(); }));
 }
 
 </script>

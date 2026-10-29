@@ -1235,6 +1235,12 @@ body.ag-chat-on .ag-nav { display: none; }
 .fab-help svg { width: 26px; height: 26px; }
 body.wa-mode .fab-help { display: none; }
 .badge.guest-chat { background: rgba(255, 176, 32, .18); color: #ffb020; }
+/* V80 manager permissions */
+.mp-row { display: flex !important; align-items: flex-start; gap: 10px; padding: 10px 0; margin: 0 !important; border-bottom: 1px solid var(--line); color: var(--text) !important; cursor: pointer; }
+.mp-row input { width: auto !important; margin: 3px 0 0 !important; }
+.mp-row small { display: block; color: var(--muted); font-weight: 500; }
+.mg-limits { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; color: var(--muted); }
+.mg-limits b { color: var(--text); }
 
 </style>
 <title>Premvio Support</title>
@@ -1278,6 +1284,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
+const PV_BUILD = "V82";   // shown in the admin + manager menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -1954,6 +1961,141 @@ async function pwRequestsView(v, opts = {}) {
   })));
 }
 
+
+/* V80: moved here from admin.js so admin AND manager panels use the same two-step login */
+/* ---------------- TWO-STEP LOGIN (authenticator app code) ---------------- */
+function mfaScreen(inner) {
+  root.innerHTML = `<div class="auth-wrap"><div class="auth-box">
+    <img src="${PV_LOGO}" class="auth-logo" alt="Premvio"><div class="card">${inner}
+    <p class="center small mt"><button type="button" class="link-btn" id="mfaOut">Log out</button></p></div></div></div>`;
+  $("#mfaOut").onclick = async () => { await pvSignOut(); location.reload(); };
+}
+async function mfaGate(p, next) {
+  root.innerHTML = `<div class="loader"></div>`;
+  const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal && aal.currentLevel === "aal2") return next(p);
+  const { data: f } = await sb.auth.mfa.listFactors();
+  const ok = (f?.totp || []).filter((x) => x.status === "verified");
+  return ok.length ? mfaCode(ok[0].id, p, next) : mfaEnroll(p, next);
+}
+function bindOtp(form, factorId, p, next) {
+  const inp = form.code;
+  inp.oninput = () => { inp.value = inp.value.replace(/\D/g, "").slice(0, 6); if (inp.value.length === 6) form.requestSubmit ? form.requestSubmit() : form.onsubmit(new Event("submit")); };
+  form.onsubmit = (e) => {
+    e.preventDefault?.();
+    if (inp.value.length !== 6) return toast("Enter the 6-digit code.", "error");
+    busy($("button.btn", form), async () => {
+      const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code: inp.value });
+      if (error) { inp.value = ""; inp.focus(); throw new Error(/invalid|expired/i.test(error.message) ? "Wrong or expired code. Try the new code in your app." : error.message); }
+      toast("Two-step login verified.", "success");
+      next(p);
+    });
+  };
+  setTimeout(() => inp.focus(), 50);
+}
+function mfaCode(factorId, p, next) {
+  mfaScreen(`<h2 class="center">Two-step login</h2>
+    <p class="center muted small">Open your authenticator app and enter the 6-digit code for <b>Premvio</b>.</p>
+    <form id="otpf"><input name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+    <button class="btn block mt">Verify</button></form>
+    <p class="small muted center mt">Lost your phone? Another admin can reset it, or run <b>reset-admin-2fa.sql</b> in Supabase.</p>`);
+  bindOtp($("#otpf"), factorId, p, next);
+}
+async function mfaEnroll(p, next) {
+  const { data: f } = await sb.auth.mfa.listFactors();
+  for (const x of (f?.all || []).filter((x) => x.status !== "verified")) await sb.auth.mfa.unenroll({ factorId: x.id });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Premvio " + p.member_id + " " + Date.now() });
+  if (error) {
+    mfaScreen(`<h2>Two-step login not available</h2><p class="muted">${esc(error.message)}</p>
+      <p class="small">In Supabase go to <b>Authentication → Multi-Factor</b> (or Sign In / Providers → MFA) and turn on <b>TOTP (App Authenticator)</b>, then log in again.</p>`);
+    return;
+  }
+  mfaScreen(`<h2 class="center">Set up two-step login</h2>
+    <p class="muted small center">Admins must use a code from their phone. You only set this up once.</p>
+    <ol class="steps small">
+      <li>Install <b>Google Authenticator</b> or <b>Microsoft Authenticator</b> on your phone.</li>
+      <li>In the app tap <b>+</b> → <b>Scan a QR code</b> and scan this:</li></ol>
+    <div class="qr-box"><img src="${esc(data.totp.qr_code)}" alt="QR code"></div>
+    <p class="small muted center">Can't scan? Enter this key in the app:<br><b class="mono" style="word-break:break-all">${esc(data.totp.secret)}</b>
+      <button type="button" class="link-btn small" id="cpk">copy</button></p>
+    <ol class="steps small" start="3"><li>Type the 6-digit code the app shows:</li></ol>
+    <form id="otpf"><input name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+    <button class="btn block mt">Turn on two-step login</button></form>`);
+  $("#cpk").onclick = () => copyText(data.totp.secret);
+  bindOtp($("#otpf"), data.id, p, next);
+}
+
+
+/* ============ V82 "Ask my manager" (support, marketing, agent panels) ============
+   teamView(v, threadId, opts) — opts.base = hash prefix of this page ("team"), opts.me = my profile */
+async function teamView(v, id, opts = {}) {
+  const base = opts.base || "team";
+  if (window.PV_TEAM_CH) { sb.removeChannel(window.PV_TEAM_CH); window.PV_TEAM_CH = null; }
+  if (id) return teamThread(v, id, opts);
+  const [{ data: mgr }, { data: list, error }] = await Promise.all([sb.rpc("my_manager"),
+    sb.from("tickets").select("*").eq("user_id", opts.me.id).eq("kind", "staff").order("updated_at", { ascending: false }).limit(50)]);
+  if (error) { v.innerHTML = `<div class="card">${/kind/.test(error.message || "") ? "Ask the admin to run update 56." : esc(errMsg(error))}</div>`; return; }
+  v.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="big-avatar" style="margin:0;width:44px;height:44px">${ICONS.user}</div>
+      <div>${mgr ? `<b>${esc(mgr.full_name || "")}</b> <span class="mono small muted">${esc(mgr.member_id)}</span><div class="small muted">Your manager — they get a notification and answer when they can.</div>`
+        : `<b>No manager yet</b><div class="small muted">Ask the admin to give you a manager.</div>`}</div></div></div>
+    ${mgr ? `<div class="card"><h3 style="margin-top:0">New question</h3><form id="tqf">
+      <label>Topic</label><input name="s" required maxlength="80" placeholder="e.g. Customer wants a refund">
+      <label>Your question</label><textarea name="b" required maxlength="1000" rows="3"></textarea>
+      <button class="btn block mt">${ICONS.send} Send to my manager</button></form></div>` : ""}
+    <h3>My questions</h3>
+    ${(list || []).length ? list.map((t) => `<a class="card sp-item" href="#${base}/${t.id}" style="display:block;color:inherit;text-decoration:none">
+      <div class="row between" style="gap:8px"><b>${esc(t.subject)}</b><span class="small muted">${fmtDate(t.updated_at)}</span></div>
+      <div class="mt">${t.status === "closed" ? `<span class="badge completed">solved</span>` : t.waiting_for === "customer" ? `<span class="badge agent">manager replied</span>` : `<span class="badge pending">waiting for manager</span>`}</div></a>`).join("")
+      : `<div class="empty">No questions yet</div>`}`;
+  if ($("#tqf")) $("#tqf").onsubmit = (e) => {
+    e.preventDefault();
+    busy($("button", e.target), async () => {
+      const { data: tid, error: er } = await sb.rpc("staff_ask_manager", { p_subject: e.target.s.value.trim(), p_body: e.target.b.value.trim() });
+      if (er) throw er;
+      toast("Sent to your manager.", "success"); location.hash = `${base}/${tid}`;
+    });
+  };
+}
+async function teamThread(v, id, opts) {
+  const base = opts.base || "team";
+  const [{ data: t, error }, { data: msgs }] = await Promise.all([
+    sb.from("tickets").select("*").eq("id", id).single(),
+    sb.from("ticket_messages").select("*").eq("ticket_id", id).order("created_at")]);
+  if (error || !t) { location.hash = base; return; }
+  const open = t.status === "open";
+  v.innerHTML = `<a class="back-link" href="#${base}">← My questions</a>
+    <div class="card"><div class="row between" style="gap:8px"><h2 style="margin:0">${esc(t.subject)}</h2>
+      ${open ? `<button class="btn sm success" id="tSolved">Solved</button>` : `<span class="badge completed">solved</span>`}</div>
+      <div class="chat admin-chat" id="tBox"></div>
+      <form id="trf" class="chat-input" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write…" required></textarea>
+        <button class="btn" aria-label="Send">${ICONS.send}</button></form></div>`;
+  const box = $("#tBox"), seen = new Set();
+  // my messages on the right, the manager's on the left
+  const add = (m) => { if (seen.has(m.id)) return; seen.add(m.id);
+    box.insertAdjacentHTML("beforeend", m.kind === "system" ? `<div class="chat-sys">${esc(m.body)}</div>`
+      : `<div class="bubble ${m.from_staff ? "them" : "me"}">${m.from_staff ? `<div class="who">Manager</div>` : ""}<div>${esc(m.body)}</div><div class="t">${fmtDate(m.created_at)}</div></div>`);
+    box.scrollTop = box.scrollHeight; };
+  (msgs || []).forEach(add);
+  window.PV_TEAM_CH = sb.channel("team-" + id).on("postgres_changes", { event: "INSERT", schema: "public", table: "ticket_messages", filter: `ticket_id=eq.${id}` }, (x) => add(x.new)).subscribe();
+  const f = $("#trf");
+  f.m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !/Android|iPhone/i.test(navigator.userAgent)) { e.preventDefault(); f.requestSubmit(); } };
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    const body = f.m.value.trim(); if (!body) return;
+    busy($("button", f), async () => {
+      const { data: mid, error: er } = await sb.rpc("send_ticket_message", { p_ticket: id, p_body: body });
+      if (er) throw er;
+      f.m.value = ""; add({ id: mid, from_staff: false, kind: "msg", body, created_at: new Date().toISOString() });
+      if (!open) teamThread(v, id, opts);
+    });
+  };
+  if ($("#tSolved")) $("#tSolved").onclick = async () => {
+    const { error: er } = await sb.rpc("close_ticket", { p_ticket: id });
+    if (er) return toast(errMsg(er), "error");
+    location.hash = base;
+  };
+}
+
 </script>
 <script>
 /* ============ PREMVIO — Support panel ============
@@ -1976,6 +2118,7 @@ sb.auth.getSession().then(async ({ data }) => {
 
 const SP_SECTIONS = [
   { id: "chats", label: "Help chats", icon: ICONS.chat },
+  { id: "team", label: "Ask my manager", icon: ICONS.users },
   { id: "profile", label: "My account", icon: ICONS.user },
 ];
 
@@ -2026,7 +2169,7 @@ function route() {
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
   const id = Number(hashArg());
-  (s === "chats" ? (id ? chat(v, id) : chats(v)) : profile(v)).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
+  (s === "chats" ? (id ? chat(v, id) : chats(v)) : s === "team" ? teamView(v, id, { base: "team", me: SP.me }) : profile(v)).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
   window.scrollTo(0, 0);
 }
 async function refreshCount() {
@@ -2073,9 +2216,10 @@ async function chat(v, id) {
   const mineOrFree = t.accepted_by === SP.me.id;
   v.innerHTML = `<a class="back-link" href="#chats">← All chats</a>
     <div class="grid-2 mk-two sp-two">
-      <div class="card"><div class="row between" style="gap:8px"><div style="min-width:0"><h2 style="margin:0">${esc(t.subject)} <span class="muted small">#${t.id}</span></h2>
+      <div class="card"><div class="row between" style="gap:8px;flex-wrap:wrap"><div style="min-width:0"><h2 style="margin:0">${esc(t.subject)} <span class="muted small">#${t.id}</span></h2>
           <div class="small muted">${info.role === "agent" ? `<span class="badge agent-chat">Premvio Agent</span> ` : ""}${esc(info.full_name || "")} · ${esc(info.member_id)}${accepted && open ? " · " + (mineOrFree ? "accepted by you" : "accepted by " + esc(info.accepted_by || "")) : ""}</div></div>
-          ${open ? `<button class="btn sm success" id="closeT">Mark solved</button>` : `<span class="badge completed">solved</span>`}</div>
+          <div class="row" style="gap:6px">${open && accepted && mineOrFree ? `<button class="btn sm soft" id="escT" style="white-space:nowrap">🆘 Pass to my manager</button>` : ""}
+          ${open ? `<button class="btn sm success" id="closeT" style="white-space:nowrap">Mark solved</button>` : `<span class="badge completed">solved</span>`}</div></div>
         <div class="chat admin-chat" id="chatBox"></div>
         ${open && !accepted ? `<div class="sp-accept"><b>Waiting for support</b><button class="btn" id="accBtn">Accept chat</button></div>` : `
         <form id="rf" class="chat-input" style="position:static"><textarea name="m" rows="2" maxlength="1000" placeholder="Write a reply…" required></textarea>
@@ -2107,6 +2251,20 @@ async function chat(v, id) {
       });
     };
   }
+  if ($("#escT")) $("#escT").onclick = () => openModal(`<h2>Pass chat #${id} to your manager</h2><form id="escf">
+      <label>Note for your manager <span class="muted">(only staff see it)</span></label>
+      <textarea name="n" maxlength="500" rows="3" required placeholder="e.g. Customer says deposit is missing, I can't find it in the list"></textarea>
+      <p class="small muted">Your manager continues this chat. The customer sees “A senior team member joined to help you”. You won't see the chat any more.</p>
+      <button class="btn block mt">Pass to my manager</button></form>`, (m) => {
+    $("#escf", m).onsubmit = (e) => {
+      e.preventDefault();
+      busy($("button", e.target), async () => {
+        const { error: er } = await sb.rpc("support_escalate", { p_ticket: id, p_note: e.target.n.value.trim() });
+        if (er) throw er;
+        closeModal(); toast("Passed to your manager.", "success"); refreshCount(); location.hash = "chats";
+      });
+    };
+  });
   if ($("#closeT")) $("#closeT").onclick = async () => {
     if (!(await confirmBox("Mark solved?", "The chat closes. The customer can open it again by replying.", "Mark solved"))) return;
     const { error: er } = await sb.rpc("close_ticket", { p_ticket: id });
