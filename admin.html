@@ -1224,6 +1224,17 @@ body.ag-chat-on .ag-nav { display: none; }
 .side-search input { margin: 0; padding: 9px 12px; font-size: .9rem; }
 .pc-list { max-height: 46vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: 4px 8px; }
 .pc-all { display: flex !important; margin: 6px 0 !important; }
+/* V79 guest chat + floating help */
+.guest-help-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 12px 0 0; padding: 12px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .22); color: #fff; font: inherit; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px); }
+.guest-help-btn svg { width: 20px; height: 20px; }
+#guestOv { position: fixed; inset: 0; z-index: 60; background: var(--bg); }
+.guest-form { margin: 12px; }
+.fab-help { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 25; width: 52px; height: 52px; border-radius: 50%;
+  display: grid; place-items: center; background: linear-gradient(135deg, #22c983, #1fa2ff); color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.fab-help svg { width: 26px; height: 26px; }
+body.wa-mode .fab-help { display: none; }
+.badge.guest-chat { background: rgba(255, 176, 32, .18); color: #ffb020; }
 
 </style>
 <title>Premvio Admin</title>
@@ -2746,6 +2757,29 @@ function jobForm(j = {}) {
 }
 
 /* ---------------- 👤 ACCOUNT MANAGERS (V78) ---------------- */
+async function drawNotes(box, u) {
+  const { data, error } = await sb.from("customer_notes").select("*").eq("user_id", u.id).order("created_at", { ascending: false }).limit(100);
+  if (error) { box.innerHTML = `<p class="small muted">Notes need update 54.</p>`; return; }
+  await (AD.staffIdx ? null : sb.from("profiles").select("id, member_id").neq("role", "customer").then(({ data: st }) => (AD.staffIdx = Object.fromEntries((st || []).map((x) => [x.id, x.member_id])))));
+  box.innerHTML = `<h3 style="margin-top:0">📝 Private notes <span class="small muted">(only staff see them)</span></h3>
+    <form id="anf" class="row" style="gap:8px"><input name="b" maxlength="1000" required placeholder="Add a note…" style="margin:0"><button class="btn sm">Add</button></form>
+    ${data.map((n) => `<div class="list-item"><div class="grow"><div style="white-space:pre-wrap">${esc(n.body)}</div>
+      <div class="small muted">${esc((AD.staffIdx || {})[n.author_id] || "—")} · ${fmtDate(n.created_at)}</div></div>
+      <button class="link-btn small" data-and="${n.id}">Delete</button></div>`).join("") || `<p class="small muted mt">No notes yet.</p>`}`;
+  $("#anf", box).onsubmit = (e) => {
+    e.preventDefault();
+    busy($("button", e.target), async () => {
+      const { error: er } = await sb.rpc("manager_add_note", { p_member: u.member_id, p_body: e.target.b.value.trim() });
+      if (er) throw er;
+      drawNotes(box, u);
+    });
+  };
+  $$("[data-and]", box).forEach((b) => (b.onclick = async () => {
+    const { error: er } = await sb.rpc("manager_delete_note", { p_id: Number(b.dataset.and) });
+    if (er) return toast(errMsg(er), "error");
+    drawNotes(box, u);
+  }));
+}
 async function loadManagers() {
   const { data } = await sb.rpc("admin_managers");
   AD.mgrs = data || [];
@@ -3418,7 +3452,7 @@ async function help(v) {
   v.innerHTML = `<p class="muted small">Support staff answer these at <b>support.html</b>. You can answer here too.</p>
     ${chips([["waiting", "Waiting for me"], ["open", "All open"], ["closed", "Solved"], ["all", "All"], ["team", "Support team"]], AD.hF, "hf")}
     ${table(["#", "Customer", "Topic", "Status", "Last update", ""], data.map((t) => `<tr>
-      <td>${t.id}</td><td>${who(t.profiles)}${t.profiles?.role === "agent" ? `<span class="badge agent-chat">Premvio Agent</span>` : ""}</td><td><b>${esc(t.subject)}</b>${t.order_id ? `<div class="small muted">Order #${t.order_id}</div>` : ""}</td>
+      <td>${t.id}</td><td>${t.profiles ? who(t.profiles) : `${esc(t.guest_name || "Guest")}<div class="small muted">${esc(t.guest_contact || "")}</div><span class="badge guest-chat">GUEST</span>`}${t.profiles?.role === "agent" ? `<span class="badge agent-chat">Premvio Agent</span>` : ""}</td><td><b>${esc(t.subject)}</b>${t.order_id ? `<div class="small muted">Order #${t.order_id}</div>` : ""}</td>
       <td>${t.status === "closed" ? `<span class="badge completed">solved</span>` : !t.accepted_at ? `<span class="badge pending">waiting to accept</span>` : t.waiting_for === "admin" ? `<span class="badge pending">needs reply</span>` : `<span class="badge agent">replied</span>`}</td>
       <td class="small">${fmtDate(t.updated_at)}</td><td><a class="btn sm" href="#help/${t.id}">Open</a></td></tr>`), "No chats here 🎉")}`;
   $$("[data-hf]", v).forEach((c) => (c.onclick = () => { AD.hF = c.dataset.hf; route(); }));
@@ -3461,16 +3495,18 @@ async function helpThreadAdmin(v, id) {
           <button class="btn" aria-label="Send">${ICONS.send}</button></form>
         <div class="row mt" style="gap:6px;flex-wrap:wrap">${["Hi! We're checking this now 👍", "Your order has been delivered ✅", "Please send a screenshot of your payment.", "Sorry for the wait! It's done now."]
           .map((q) => `<button type="button" class="btn sm soft" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>
-      <div class="card"><h3 style="margin-top:0">${t.profiles?.role === "agent" ? `Premvio Agent <span class="badge agent-chat">agent</span>` : "Customer"}</h3>${who(t.profiles)}
+      <div class="card">${!t.profiles ? `<h3 style="margin-top:0">Guest <span class="badge guest-chat">no account</span></h3><b>${esc(t.guest_name || "")}</b>
+        <div class="small mt">Contact: <b>${esc(t.guest_contact || "—")}</b></div>
+        <p class="small muted">Not logged in — never change a password from a guest chat.</p>` : `<h3 style="margin-top:0">${t.profiles?.role === "agent" ? `Premvio Agent <span class="badge agent-chat">agent</span>` : "Customer"}</h3>${who(t.profiles)}
         <div class="small mt">Balance: <b>${money(t.profiles?.balance || 0)}</b> · Phone: ${esc(t.profiles?.phone || "—")}</div>
-        <a class="btn sm soft mt" href="#${t.profiles?.role === "agent" ? "agents" : "customers"}/${t.user_id}">Open ${t.profiles?.role === "agent" ? "agent" : "customer"}</a>
+        <a class="btn sm soft mt" href="#${t.profiles?.role === "agent" ? "agents" : "customers"}/${t.user_id}">Open ${t.profiles?.role === "agent" ? "agent" : "customer"}</a>`}
         ${t.orders ? `<h3>Order #${t.orders.id}</h3><div><b>${esc(t.orders.product_name)}</b> × ${t.orders.quantity} · ${money(t.orders.total)}</div>
           <div class="mt"><span class="badge ${t.orders.status}">${t.orders.status}</span> <span class="small muted">${fmtDate(t.orders.created_at)}</span></div>
           <div class="mt">${formView(t.orders.form_data)}</div><a class="btn sm soft mt" href="#orders">Go to orders</a>` : ""}</div></div>`;
   const chat = $("#chat"), seen = new Set();
   const add = (m) => {
     if (seen.has(m.id)) return; seen.add(m.id);
-    chat.insertAdjacentHTML("beforeend", staffBubble(m, t.profiles?.full_name));
+    chat.insertAdjacentHTML("beforeend", staffBubble(m, t.profiles?.full_name || t.guest_name));
     chat.scrollTop = chat.scrollHeight;
   };
   (msgs || []).forEach(add);
@@ -4102,6 +4138,7 @@ async function personView(v, id, back) {
         <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}
     </div>
   </div>
+  ${staff ? "" : `<div class="card" id="notesBox"></div>`}
   <div class="stats mt">${stats.map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="font-size:1.2rem">${val}</div></div>`).join("")}</div>
   <h2 class="mt">History <span class="small muted">${fmtDay(AD.pRange.from)} – ${fmtDay(AD.pRange.to)}</span></h2>
   ${rangeBar(AD.pRange)}
@@ -4150,6 +4187,7 @@ async function personView(v, id, back) {
     };
   });
   if ($("#comm")) $("#comm").onclick = () => commissionModal(u, reload);
+  if ($("#notesBox")) drawNotes($("#notesBox"), u);
   if ($("#setMgr")) $("#setMgr").onclick = () => openModal(`<h2>Account manager of ${esc(u.member_id)}</h2><form id="smf">
       <select name="m"><option value="">No manager</option>${(AD.mgrs || []).map((m) => `<option value="${m.id}" ${u.manager_id === m.id ? "selected" : ""}>${esc(m.member_id)} — ${esc(m.full_name)}</option>`).join("")}</select>
       <button class="btn block mt">Save</button></form>`, (md) => {

@@ -1224,6 +1224,17 @@ body.ag-chat-on .ag-nav { display: none; }
 .side-search input { margin: 0; padding: 9px 12px; font-size: .9rem; }
 .pc-list { max-height: 46vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: 4px 8px; }
 .pc-all { display: flex !important; margin: 6px 0 !important; }
+/* V79 guest chat + floating help */
+.guest-help-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 12px 0 0; padding: 12px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .22); color: #fff; font: inherit; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px); }
+.guest-help-btn svg { width: 20px; height: 20px; }
+#guestOv { position: fixed; inset: 0; z-index: 60; background: var(--bg); }
+.guest-form { margin: 12px; }
+.fab-help { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 25; width: 52px; height: 52px; border-radius: 50%;
+  display: grid; place-items: center; background: linear-gradient(135deg, #22c983, #1fa2ff); color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.fab-help svg { width: 26px; height: 26px; }
+body.wa-mode .fab-help { display: none; }
+.badge.guest-chat { background: rgba(255, 176, 32, .18); color: #ffb020; }
 
 </style>
 <title>Premvio Account Manager</title>
@@ -2024,23 +2035,75 @@ function requests(v) {
   return pwRequestsView(v, MG.opts);
 }
 
+const MG_FILTERS = [["all", "All"], ["requests", "Password request"], ["kyc", "KYC not done"], ["inactive30", "No order in 30 days"], ["new7", "New this week"]];
 async function customers(v) {
-  v.innerHTML = `<div class="toolbar"><input id="cq" placeholder="Search name, ID, Gmail or phone" style="max-width:360px;margin:0" autocomplete="off"></div><div id="cl"><div class="loader"></div></div>`;
+  const member = decodeURIComponent((location.hash.slice(1).split("/")[1] || ""));
+  if (member) return customerDetail(v, member);
+  MG.cf = MG.cf || "all";
+  const { data: st } = await sb.rpc("manager_stats");
+  const stat = (k, val) => `<div class="stat"><div class="k">${k}</div><div class="v">${val ?? 0}</div></div>`;
+  v.innerHTML = `${st ? `<div class="stats">${stat("My customers", st.customers)}${stat("New this week", st.new7)}${stat("Ordered in 30 days", st.active30)}
+      ${stat("KYC done", st.kyc_done)}${stat("Requests waiting", st.pending)}${stat("Passwords changed (30 days)", st.handled30)}</div>` : ""}
+    <div class="chips">${MG_FILTERS.map(([k, l]) => `<button class="chip ${MG.cf === k ? "on" : ""}" data-cf="${k}">${l}</button>`).join("")}</div>
+    <div class="toolbar"><input id="cq" placeholder="Search name, ID, Gmail or phone" style="max-width:360px;margin:0" autocomplete="off"></div><div id="cl"><div class="loader"></div></div>`;
+  $$("[data-cf]", v).forEach((c) => (c.onclick = () => { MG.cf = c.dataset.cf; route(); }));
   let t;
   const load = async () => {
-    const { data, error } = await sb.rpc("manager_customers", { p_query: $("#cq").value.trim() || null });
+    const { data, error } = await sb.rpc("manager_customers", { p_query: $("#cq").value.trim() || null, p_filter: MG.cf });
     const box = $("#cl"); if (!box) return;
     if (error) { box.innerHTML = `<div class="card">${esc(errMsg(error))}</div>`; return; }
     box.innerHTML = `<p class="small muted">${data.length} customer${data.length === 1 ? "" : "s"}${data.length >= 500 ? " (first 500 — search to find others)" : ""}</p>
-      <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Gmail</th><th>Phone</th><th>Country</th><th>KYC</th><th>Orders</th><th>Joined</th></tr></thead><tbody>
-      ${data.map((c) => `<tr><td><b>${esc(c.full_name)}</b><div class="mono small muted">${esc(c.member_id)}</div>${c.pending_request ? `<span class="badge pending">password request</span>` : ""}</td>
-        <td class="small">${esc(c.email || "")}</td><td class="small">${esc(c.phone || "")}</td><td class="small">${esc(c.country || "")}</td>
+      <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Gmail</th><th>Phone</th><th>KYC</th><th>Orders</th><th>Joined</th><th></th></tr></thead><tbody>
+      ${data.map((c) => `<tr><td><b>${esc(c.full_name)}</b><div class="mono small muted">${esc(c.member_id)}</div>${c.pending_request ? `<span class="badge pending">password request</span>` : ""}
+          ${Number(c.notes) ? `<span class="badge agent">📝 ${c.notes}</span>` : ""}</td>
+        <td class="small">${esc(c.email || "")}</td><td class="small">${esc(c.phone || "")}</td>
         <td><span class="badge ${c.kyc_status === "none" ? "" : c.kyc_status}">${esc(c.kyc_status)}</span></td>
-        <td>${c.orders}${c.last_order ? `<div class="small muted">last ${fmtDate(c.last_order)}</div>` : ""}</td><td class="small">${fmtDate(c.created_at)}</td></tr>`).join("")
-        || `<tr><td colspan="7" class="center muted">No customers yet — the admin gives customers to managers.</td></tr>`}</tbody></table></div>`;
+        <td>${c.orders}${c.last_order ? `<div class="small muted">last ${fmtDate(c.last_order)}</div>` : ""}</td><td class="small">${fmtDate(c.created_at)}</td>
+        <td><a class="btn sm soft" href="#customers/${encodeURIComponent(c.member_id)}">Open</a></td></tr>`).join("")
+        || `<tr><td colspan="7" class="center muted">No customers here.</td></tr>`}</tbody></table></div>`;
   };
   $("#cq").oninput = () => { clearTimeout(t); t = setTimeout(load, 300); };
   await load();
+}
+
+async function customerDetail(v, member) {
+  const { data: c, error } = await sb.rpc("manager_customer_detail", { p_member: member });
+  if (error) { v.innerHTML = `<a class="back-link" href="#customers">← Back</a><div class="card">${esc(errMsg(error))}</div>`; return; }
+  const kv = (k, val) => `<div><div class="k">${k}</div><div class="v">${val}</div></div>`;
+  v.innerHTML = `<a class="back-link" href="#customers">← Back</a>
+    <div class="card"><div class="row between wrap"><div><h2 style="margin:0">${esc(c.full_name)}</h2><div class="mono muted">${esc(c.member_id)}</div></div>
+      <div>${c.blocked ? `<span class="badge blocked">blocked</span>` : ""}<span class="badge ${c.kyc_status === "none" ? "" : c.kyc_status}">KYC ${esc(c.kyc_status)}</span></div></div>
+      <div class="info-grid mt">${kv("Gmail", esc(c.email || "—"))}${kv("Phone", esc(c.phone || "—"))}${kv("Country", esc(c.country || "—"))}
+        ${kv("Joined", fmtDate(c.created_at))}${kv("Devices", c.devices)}${kv("Last seen", c.last_seen ? fmtDate(c.last_seen) : "—")}
+        ${c.pw_reset_at ? kv("Password changed by Premvio", fmtDate(c.pw_reset_at)) : ""}</div></div>
+    <div class="grid-2 mk-two">
+      <div class="card"><h3 style="margin-top:0">📝 Private notes <span class="small muted">(only staff see them)</span></h3>
+        <form id="nf"><textarea name="b" maxlength="1000" rows="2" required placeholder="e.g. Called on 29 Oct, wants Telegram Premium"></textarea>
+          <button class="btn sm mt">Add note</button></form>
+        <div class="mt">${(c.notes || []).map((n) => `<div class="list-item"><div class="grow"><div style="white-space:pre-wrap">${esc(n.body)}</div>
+            <div class="small muted">${esc(n.author || "—")} · ${fmtDate(n.created_at)}</div></div>
+            ${n.mine ? `<button class="link-btn small" data-ndel="${n.id}">Delete</button>` : ""}</div>`).join("") || `<p class="small muted">No notes yet.</p>`}</div></div>
+      <div class="card"><h3 style="margin-top:0">Orders <span class="small muted">(last 20)</span></h3>
+        ${(c.orders || []).map((o) => `<div class="list-item"><div class="grow"><b>${esc(o.product_name)}</b> × ${o.quantity}<div class="small muted">#${o.id} · ${fmtDate(o.created_at)}</div></div>
+          <span class="badge ${o.status}">${esc(o.status)}</span></div>`).join("") || `<p class="small muted">No orders yet.</p>`}
+        <h3>Password requests</h3>
+        ${(c.requests || []).map((r) => `<div class="list-item"><div class="grow"><b>${esc(r.telegram)}</b> ${r.phone_match ? "" : `<span class="badge rejected">phone ⚠️</span>`}
+          <div class="small muted">#${r.id} · ${fmtDate(r.created_at)}${r.handled_by ? " · " + esc(r.handled_by) : ""}${r.verify_method ? " · " + (r.verify_method === "video" ? "video call" : "photo with ID") : ""}</div></div>
+          <span class="badge ${r.status === "done" ? "completed" : r.status}">${esc(r.status)}</span></div>`).join("") || `<p class="small muted">None.</p>`}</div></div>`;
+  $("#nf").onsubmit = (e) => {
+    e.preventDefault();
+    busy($("button", e.target), async () => {
+      const { error: er } = await sb.rpc("manager_add_note", { p_member: member, p_body: e.target.b.value.trim() });
+      if (er) throw er;
+      toast("Note saved.", "success"); route();
+    });
+  };
+  $$("[data-ndel]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Delete note?", "It will be removed for everyone.", "Delete", true))) return;
+    const { error: er } = await sb.rpc("manager_delete_note", { p_id: Number(b.dataset.ndel) });
+    if (er) return toast(errMsg(er), "error");
+    route();
+  }));
 }
 
 async function profile(v) {
