@@ -1284,7 +1284,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V82";   // shown in the admin + manager menu so the owner can see which version is loaded
+const PV_BUILD = "V83";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -2131,6 +2131,7 @@ const SECTIONS = [
   { id: "jobs", label: "Jobs", icon: ICONS.idcard },
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "managers", label: "Managers", icon: ICONS.users },
+  { id: "invitelinks", label: "Invite links", icon: ICONS.gift },
   { id: "pwreq", label: "Password requests", icon: ICONS.lock, count: "pending_pwreq" },
   { id: "agents", label: "Staff (agents, admins, marketing, support)", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
@@ -2237,7 +2238,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, giveaways, profit, errors, customers, managers, pwreq, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, giveaways, profit, errors, customers, managers, invitelinks, pwreq, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -2902,6 +2903,58 @@ async function loadManagers() {
   AD.mgrs = data || [];
   return AD.mgrs;
 }
+/* ---------- V83: invite links made by managers (proof of who brought each player) ---------- */
+const IL_RANGES = [["all", "All time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"]];
+async function invitelinks(v) {
+  const arg = Number(hashArg());
+  if (arg) return inviteLinkPlayers(v, arg);
+  AD.ilr = AD.ilr || "all"; AD.ilm = AD.ilm || "";
+  const from = AD.ilr === "all" ? null : new Date(Date.now() - Number(AD.ilr) * 864e5).toISOString();
+  const [{ data, error }, { data: site }] = await Promise.all([sb.rpc("admin_links_overview", { p_from: from, p_to: null }),
+    sb.from("app_settings").select("value").eq("key", "site_url").maybeSingle()]);
+  if (error) throw /admin_links_overview/.test(error.message || "") ? new Error("Run 57-update-invite-links.sql in Supabase first.") : error;
+  const base = ((site && site.value) || "https://premvio.app").replace(/\/+$/, "");
+  const mgrs = [...new Map(data.map((l) => [l.manager_member, l.manager_name])).entries()];
+  const rows = data.filter((l) => !AD.ilm || l.manager_member === AD.ilm);
+  const byMgr = {};
+  data.forEach((l) => { const k = l.manager_member || "—"; byMgr[k] = byMgr[k] || { name: l.manager_name, links: 0, joined: 0, kyc: 0, ordered: 0, sales: 0 };
+    const b = byMgr[k]; b.links++; b.joined += Number(l.joined); b.kyc += Number(l.kyc_done); b.ordered += Number(l.ordered); b.sales += Number(l.sales); });
+  v.innerHTML = `<div class="chips">${IL_RANGES.map(([k, l]) => `<button class="chip ${AD.ilr === k ? "on" : ""}" data-ilr="${k}">${l}</button>`).join("")}</div>
+    <h3>By manager</h3>
+    ${table(["Manager", "Links", "Joined", "KYC done", "Ordered", "Sales"], Object.entries(byMgr).sort((a, b) => b[1].joined - a[1].joined).map(([k, b]) =>
+      `<tr><td><b>${esc(b.name || "—")}</b><div class="mono small muted">${esc(k)}</div></td><td>${b.links}</td><td><b>${b.joined}</b></td><td>${b.kyc}</td><td>${b.ordered}</td><td>${money(b.sales)}</td></tr>`), "No links yet")}
+    <div class="row between wrap mt"><h3 style="margin:0">All links</h3>
+      <select id="ilm" style="max-width:260px;margin:0"><option value="">All managers</option>${mgrs.map(([m, n]) => `<option value="${esc(m)}" ${AD.ilm === m ? "selected" : ""}>${esc(n || "—")} (${esc(m)})</option>`).join("")}</select></div>
+    ${table(["Link", "Manager", "Joined", "KYC done", "Ordered", "Sales", ""], rows.map((l) => `<tr><td><b>${esc(l.label)}</b> ${l.active ? "" : `<span class="badge blocked">off</span>`}
+        <div class="mono small muted">${esc(base)}/?m=${esc(l.code)}</div>${l.note ? `<div class="small" style="white-space:pre-wrap">📝 ${esc(l.note)}</div>` : ""}
+        <div class="small muted">made ${fmtDate(l.created_at)}${l.last_join ? " · last join " + fmtDate(l.last_join) : ""}</div></td>
+      <td>${esc(l.manager_name || "—")}<div class="mono small muted">${esc(l.manager_member || "")}</div>${l.manager_blocked ? `<span class="badge blocked">blocked</span>` : ""}</td>
+      <td><b>${l.joined}</b></td><td>${l.kyc_done}</td><td>${l.ordered}</td><td>${money(l.sales)}</td>
+      <td class="row wrap" style="gap:6px"><a class="btn sm soft" href="#invitelinks/${l.id}">Players</a>
+        <button class="btn sm ${l.active ? "danger" : "success"}" data-iltog="${l.id}">${l.active ? "Turn off" : "Turn on"}</button></td></tr>`), "No links")}`;
+  $$("[data-ilr]", v).forEach((c) => (c.onclick = () => { AD.ilr = c.dataset.ilr; invitelinks(v); }));
+  $("#ilm").onchange = (e) => { AD.ilm = e.target.value; invitelinks(v); };
+  $$("[data-iltog]", v).forEach((b) => (b.onclick = async () => {
+    const l = data.find((x) => x.id === Number(b.dataset.iltog));
+    const { error: er } = await sb.rpc("manager_update_link", { p_id: l.id, p_label: l.label, p_note: l.note || "", p_active: !l.active });
+    if (er) return toast(errMsg(er), "error");
+    toast(l.active ? "Link turned off — new sign-ups from it no longer count." : "Link turned on.", "success"); invitelinks(v);
+  }));
+}
+async function inviteLinkPlayers(v, id) {
+  const [{ data: all }, { data, error }] = await Promise.all([sb.rpc("admin_links_overview", { p_from: null, p_to: null }), sb.rpc("link_players", { p_link: id })]);
+  if (error) throw error;
+  const l = (all || []).find((x) => x.id === id) || { label: "Link", code: "" };
+  v.innerHTML = `<a class="back-link" href="#invitelinks">← Back</a>
+    <div class="card"><h2 style="margin:0">${esc(l.label)} <span class="mono small muted">${esc(l.code)}</span></h2>
+      <div class="small muted">Manager: <b>${esc(l.manager_name || "—")}</b> ${esc(l.manager_member || "")}</div>${l.note ? `<p class="small" style="white-space:pre-wrap">📝 ${esc(l.note)}</p>` : ""}</div>
+    <p class="small muted">${data.length} player${data.length === 1 ? "" : "s"} joined from this link</p>
+    ${table(["Player", "KYC", "Orders", "Bought", "Manager now", "Joined", ""], data.map((c) => `<tr><td><b>${esc(c.full_name)}</b><div class="mono small muted">${esc(c.member_id)}</div></td>
+      <td><span class="badge ${c.kyc_status === "none" ? "" : c.kyc_status}">${esc(c.kyc_status)}</span></td><td>${c.orders}</td><td>${money(c.spent)}</td>
+      <td class="small">${esc(c.manager_now || "none")}</td><td class="small">${fmtDate(c.joined_at)}</td>
+      <td><a class="btn sm soft" href="#customers/${c.user_id}">Open</a></td></tr>`), "Nobody yet")}`;
+}
+
 async function managers(v) {
   const [list, { count: unassigned }, { data: st }] = await Promise.all([loadManagers(),
     sb.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer").is("manager_id", null),
@@ -4261,6 +4314,7 @@ async function personView(v, id, back) {
         <button class="btn sm danger" id="del">🗑 Delete account</button>` : ""}
     </div>
   </div>
+  ${!staff && u.invite_link_id ? `<div class="card" id="fromLink"><span class="small muted">Joined from invite link…</span></div>` : ""}
   ${staff ? "" : `<div class="card" id="notesBox"></div>`}
   <div class="stats mt">${stats.map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="font-size:1.2rem">${val}</div></div>`).join("")}</div>
   <h2 class="mt">History <span class="small muted">${fmtDay(AD.pRange.from)} – ${fmtDay(AD.pRange.to)}</span></h2>
@@ -4273,6 +4327,11 @@ async function personView(v, id, back) {
       <td class="small">${esc(t.description || "")}${txNote(t)}</td></tr>`;
   }), "No history yet")}`;
   const reload = () => personView(v, id, back);
+  if (!staff && u.invite_link_id) sb.rpc("admin_customer_link", { p_user: id }).then(({ data: lk }) => {
+    const box = $("#fromLink"); if (!box || !lk) return;
+    box.innerHTML = `🔗 <b>Joined from invite link</b> “${esc(lk.label)}” <span class="mono small muted">${esc(lk.code)}</span> · manager <b>${esc(lk.manager || "—")}</b>
+      <span class="mono small muted">${esc(lk.manager_member || "")}</span> · ${fmtDate(lk.at)} <a class="link-btn small" href="#invitelinks/${u.invite_link_id}">See link</a>`;
+  });
   bindRange(v, AD.pRange, (nr) => { AD.pRange = nr; reload(); });
   if ($("#mfaReset")) $("#mfaReset").onclick = async () => {
     if (!(await confirmBox("Reset two-step login?", `${esc(u.full_name)} will scan a new QR code next time they log in. Use this if they lost their phone.`, "Reset"))) return;
@@ -4581,6 +4640,7 @@ async function settings(v) {
       <button class="btn block mt">Save message</button></form></div>
     <div class="card" style="max-width:620px"><h2>App settings</h2><form id="sf">
     <label>Telegram username customers message to deposit</label><input name="telegram_username" required value="${esc(s.telegram_username || "@premvio")}">
+    <label>Customer website address <span class="small muted">(used for managers' invite links)</span></label><input name="site_url" type="url" placeholder="https://premvio.app" value="${esc(s.site_url || "https://premvio.app")}">
     <div class="grid-2"><div><label>Minimum withdrawal (${CFG.CURRENCY})</label><input type="number" name="min_withdraw" min="0" value="${esc(s.min_withdraw || 100)}"></div>
     <div><label>Maximum withdrawal (${CFG.CURRENCY})</label><input type="number" name="max_withdraw" min="0" value="${esc(s.max_withdraw || 100000)}"></div></div>
     <label>Withdrawal code valid for (hours)</label><input type="number" name="withdraw_hours" min="1" max="168" value="${esc(s.withdraw_hours || 24)}">
@@ -4645,6 +4705,7 @@ async function settings(v) {
     let tg = f.telegram_username.value.trim();
     if (!tg.startsWith("@")) tg = "@" + tg;
     const rows = [["telegram_username", tg], ["min_withdraw", f.min_withdraw.value], ["max_withdraw", f.max_withdraw.value], ["withdraw_hours", f.withdraw_hours.value],
+      ["site_url", (f.site_url.value.trim() || "https://premvio.app").replace(/\/+$/, "")],
       ["wd_hold_amount", String(Math.max(0, Number(f.wd_hold_amount.value) || 0))], ["wd_daily_limit", String(Math.max(0, Number(f.wd_daily_limit.value) || 0))]]
       .map(([key, value]) => ({ key, value: String(value) }));
     busy($("button", f), async () => {
