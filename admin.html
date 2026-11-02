@@ -1324,7 +1324,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V86";   // shown in every staff menu so the owner can see which version is loaded
+const PV_BUILD = "V88";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -2172,6 +2172,7 @@ const SECTIONS = [
   { id: "customers", label: "Customers", icon: ICONS.users },
   { id: "managers", label: "Managers", icon: ICONS.users },
   { id: "invitelinks", label: "Invite links", icon: ICONS.gift },
+  { id: "salaries", label: "Salaries", icon: ICONS.wallet },
   { id: "pwreq", label: "Password requests", icon: ICONS.lock, count: "pending_pwreq" },
   { id: "agents", label: "Staff (agents, admins, marketing, support)", icon: ICONS.shield },
   { id: "kyc", label: "KYC review", icon: ICONS.shield, count: "pending_kyc" },
@@ -2278,7 +2279,7 @@ function route() {
   $("#ptitle").textContent = SECTIONS.find((x) => x.id === s).label;
   const v = $("#view");
   v.innerHTML = `<div class="loader"></div>`;
-  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, giveaways, profit, errors, customers, managers, invitelinks, pwreq, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
+  const fn = { dashboard, orders, agentorders, sells, sellitems, products, banners, actionlog, promos, vouchers, reviews, features, jobs, giveaways, profit, errors, customers, managers, invitelinks, salaries, pwreq, agents, kyc, withdrawals, payoutcheck, deposits, agentdeposits, payouts, methods, agentmethods, agentcomm, transactions, help, reports, notify, settings }[s];
   fn(v).catch((e) => (v.innerHTML = `<div class="card">${esc(errMsg(e))}</div>`));
 }
 function table(head, rows, empty = "Nothing here yet") {
@@ -2943,6 +2944,218 @@ async function loadManagers() {
   AD.mgrs = data || [];
   return AD.mgrs;
 }
+/* ---------- V88: salaries — employees (managers, marketing, support) + monthly salary invoices by email ----------
+   Records only: nothing here changes any balance. Agents are not part of this. */
+const EMP_ROLES = [["manager", "Premvio manager"], ["marketing", "Marketing"], ["support", "Support"], ["other", "Other"]];
+const empRole = (r) => (EMP_ROLES.find((x) => x[0] === r) || [r, r])[1];
+const monthName = (d) => new Date(String(d).slice(0, 10) + "T00:00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+async function salaries(v) {
+  const [{ data: emps, error }, { data: invs }, { data: ready }] = await Promise.all([
+    sb.from("employees").select("*").order("active", { ascending: false }).order("full_name"),
+    sb.from("salary_invoices").select("id, number, employee_id, period, total, status, sent_at, sent_to, paid_at").order("period", { ascending: false }).order("id", { ascending: false }).limit(300),
+    sb.rpc("admin_gmail_ready")]);
+  if (error) throw /employees/.test(error.message || "") ? new Error("Run 58-update-salary-invoices.sql in Supabase first.") : error;
+  AD.emps = emps || [];
+  AD.salF = AD.salF || "all";
+  const byId = Object.fromEntries(AD.emps.map((e) => [e.id, e]));
+  const list = (invs || []).filter((i) => AD.salF === "all" || i.status === AD.salF);
+  const monthTotal = (invs || []).filter((i) => String(i.period).slice(0, 7) === new Date().toISOString().slice(0, 7)).reduce((a, i) => a + Number(i.total), 0);
+  const stat = (k, val) => `<div class="stat"><div class="k">${k}</div><div class="v">${val}</div></div>`;
+  v.innerHTML = `${ready ? "" : `<div class="card" style="border-color:var(--gold)">📧 <b>Email not connected yet.</b> You can make and print invoices now. To send them from premvioapp@gmail.com,
+      do <b>gmail-sender-google-script.js</b> then run <b>set-gmail-sender.sql</b> once.</div>`}
+    <div class="stats">${stat("Employees", AD.emps.filter((e) => e.active).length)}${stat("Salaries per month", money(AD.emps.filter((e) => e.active).reduce((a, e) => a + Number(e.salary), 0)))}
+      ${stat("Invoices this month", money(monthTotal))}${stat("Not paid yet", (invs || []).filter((i) => i.status !== "paid").length)}</div>
+    <div class="row between wrap"><h3 style="margin:0">Employees</h3><button class="btn" id="addEmp">+ Add employee</button></div>
+    ${table(["Name", "Role", "Gmail", "Phone", "Age", "Salary / month", ""], AD.emps.map((e) => `<tr class="${e.active ? "" : "muted"}">
+      <td><b>${esc(e.full_name)}</b>${e.active ? "" : ` <span class="badge blocked">left</span>`}${e.note ? `<div class="small muted">${esc(e.note)}</div>` : ""}</td>
+      <td>${esc(empRole(e.role))}</td><td class="small">${esc(e.email)}</td><td class="small">${esc(e.phone)}</td><td>${e.age}</td><td><b>${money(e.salary)}</b></td>
+      <td class="row wrap" style="gap:6px">${e.active ? `<button class="btn sm" data-newinv="${e.id}">🧾 New invoice</button>` : ""}<button class="btn sm soft" data-editemp="${e.id}">Edit</button></td></tr>`), "No employees yet — press “+ Add employee”")}
+    <div class="row between wrap mt"><h3 style="margin:0">Salary invoices</h3>
+      ${chips([["all", "All"], ["draft", "Draft"], ["sent", "Sent"], ["paid", "Paid"]], AD.salF, "salf")}</div>
+    ${table(["Invoice", "Employee", "Month", "Total", "Status", ""], list.map((i) => { const e = byId[i.employee_id] || {}; return `<tr>
+      <td class="mono small">${esc(i.number)}</td><td><b>${esc(e.full_name || "—")}</b><div class="small muted">${esc(empRole(e.role))}</div></td>
+      <td>${esc(monthName(i.period))}</td><td><b>${money(i.total)}</b></td>
+      <td><span class="badge ${i.status === "paid" ? "completed" : i.status === "sent" ? "active" : "pending"}">${i.status}</span>
+        ${i.sent_at ? `<div class="small muted">📧 ${fmtDate(i.sent_at)}</div>` : ""}${i.paid_at ? `<div class="small muted">✅ ${fmtDate(i.paid_at)}</div>` : ""}</td>
+      <td class="row wrap" style="gap:6px"><button class="btn sm soft" data-editinv="${i.id}">Edit / send</button>
+        ${i.status === "draft" ? `<button class="btn sm ghost" data-delinv="${i.id}">Delete</button>` : ""}</td></tr>`; }), "No invoices yet")}`;
+  $("#addEmp").onclick = () => employeeForm(null);
+  $$("[data-editemp]", v).forEach((b) => (b.onclick = () => employeeForm(AD.emps.find((e) => e.id === Number(b.dataset.editemp)))));
+  $$("[data-newinv]", v).forEach((b) => (b.onclick = () => salaryInvoiceForm(null, AD.emps.find((e) => e.id === Number(b.dataset.newinv)))));
+  $$("[data-editinv]", v).forEach((b) => (b.onclick = async () => {
+    const { data, error: er } = await sb.from("salary_invoices").select("*").eq("id", Number(b.dataset.editinv)).single();
+    if (er) return toast(errMsg(er), "error");
+    salaryInvoiceForm(data, byId[data.employee_id]);
+  }));
+  $$("[data-delinv]", v).forEach((b) => (b.onclick = async () => {
+    if (!(await confirmBox("Delete this draft?", "It was never sent. This can't be undone.", "Delete", true))) return;
+    const { error: er } = await sb.from("salary_invoices").delete().eq("id", Number(b.dataset.delinv));
+    if (er) return toast(errMsg(er), "error");
+    toast("Draft deleted.", "success"); route();
+  }));
+  $$("[data-salf]", v).forEach((c) => (c.onclick = () => { AD.salF = c.dataset.salf; route(); }));
+}
+function employeeForm(e) {
+  openModal(`<h2>${e ? "Edit employee" : "Add employee"}</h2>
+    <form id="ef">
+      <label>Full name</label><input name="full_name" required minlength="2" maxlength="80" value="${esc(e?.full_name || "")}">
+      <label>Gmail (the invoice is sent here)</label><input name="email" type="email" required maxlength="120" value="${esc(e?.email || "")}" placeholder="name@gmail.com">
+      <div class="grid-2"><div><label>Phone number</label><input name="phone" required maxlength="20" inputmode="tel" value="${esc(e?.phone || "")}" placeholder="98XXXXXXXX"></div>
+        <div><label>Age</label><input name="age" type="number" required min="14" max="100" value="${esc(e?.age ?? "")}"></div></div>
+      <div class="grid-2"><div><label>Role</label><select name="role" required>${EMP_ROLES.map(([k, l]) => `<option value="${k}" ${e?.role === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div><label>Salary per month (${CFG.CURRENCY})</label><input name="salary" type="number" required min="0" step="0.01" value="${esc(e?.salary ?? "")}"></div></div>
+      <label>Note <span class="muted">(optional, only you see it)</span></label><input name="note" maxlength="500" value="${esc(e?.note || "")}" placeholder="e.g. Staff ID PV1234, joined 1 Nov">
+      ${e ? `<label class="row" style="gap:8px;margin-top:12px;color:var(--text)"><input type="checkbox" name="active" style="width:auto" ${e.active ? "checked" : ""}> Still working at Premvio</label>` : ""}
+      <button class="btn block mt">${e ? "Save" : "Add employee"}</button></form>`, (m) => {
+    $("#ef", m).onsubmit = (ev) => {
+      ev.preventDefault();
+      const f = ev.target;
+      const row = { full_name: f.full_name.value.trim(), email: f.email.value.trim().toLowerCase(), phone: f.phone.value.trim(), age: Math.floor(Number(f.age.value)),
+        role: f.role.value, salary: Math.round(Number(f.salary.value) * 100) / 100, note: f.note.value.trim() || null };
+      if (e) row.active = f.active.checked;
+      busy($("button", f), async () => {
+        const { error } = e ? await sb.from("employees").update(row).eq("id", e.id) : await sb.from("employees").insert(row);
+        if (error) throw /check constraint/.test(error.message || "") ? new Error("Check the Gmail, phone (5–20 digits) and age (14–100).") : error;
+        closeModal(); toast(e ? "Saved." : "Employee added.", "success"); route();
+      });
+    };
+  });
+}
+// the invoice page itself (preview, PDF and email all use this) — simple tables + inline styles so Gmail and PDF show it right
+function salaryInvoiceHtml(inv, e, site) {
+  const cur = CFG.CURRENCY, fmt = (n) => cur + " " + Math.abs(Number(n || 0)).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const items = inv.items || [], earn = items.filter((x) => Number(x.amount) >= 0), ded = items.filter((x) => Number(x.amount) < 0);
+  const total = items.reduce((a, x) => a + Number(x.amount || 0), 0);
+  const row = (x, neg) => `<tr><td style="padding:10px 12px;border-bottom:1px solid #e6e9f2">${esc(x.label)}</td>
+    <td style="padding:10px 12px;border-bottom:1px solid #e6e9f2;text-align:right;white-space:nowrap;color:${neg ? "#d33" : "#111"}">${neg ? "− " : ""}${fmt(x.amount)}</td></tr>`;
+  const sect = (t) => `<tr><td colspan="2" style="padding:14px 12px 6px;font-size:11px;letter-spacing:1px;color:#7a8299;text-transform:uppercase;font-weight:bold">${t}</td></tr>`;
+  const kv = (k, val) => val ? `<tr><td style="padding:3px 14px 3px 0;color:#7a8299;font-size:13px;white-space:nowrap">${k}</td><td style="padding:3px 0;font-size:13px;color:#111">${val}</td></tr>` : "";
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(inv.number || "Salary invoice")}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f9;font-family:Arial,Helvetica,sans-serif;color:#111">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f9;padding:24px 0"><tr><td align="center">
+<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e1e5ef">
+  <tr><td style="background:#060b1a;padding:22px 26px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:middle"><img src="${esc(site)}/icon-192.png" width="46" height="46" alt="" style="border-radius:10px;vertical-align:middle">
+        <span style="font-size:24px;font-weight:bold;color:#ffffff;vertical-align:middle;margin-left:10px">Premvio</span></td>
+      <td style="text-align:right;vertical-align:middle;color:#ffffff"><div style="font-size:18px;font-weight:bold;letter-spacing:.5px">SALARY INVOICE</div>
+        <div style="font-size:12px;color:#9fb3d9;margin-top:4px">${esc(inv.number || "Draft")}</div></td></tr></table></td></tr>
+  <tr><td style="padding:22px 26px 6px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:top;width:55%"><div style="font-size:11px;letter-spacing:1px;color:#7a8299;text-transform:uppercase;font-weight:bold;margin-bottom:6px">Paid to</div>
+        <div style="font-size:17px;font-weight:bold">${esc(e.full_name)}</div>
+        <table cellpadding="0" cellspacing="0" style="margin-top:6px">${kv("Role", esc(empRole(e.role)))}${kv("Email", esc(e.email))}${kv("Phone", esc(e.phone))}</table></td>
+      <td style="vertical-align:top;text-align:right"><table cellpadding="0" cellspacing="0" style="margin-left:auto">
+        ${kv("Salary month", esc(monthName(inv.period)))}${kv("Invoice date", today)}${kv("Pay date", inv.pay_date ? esc(fmtDay(inv.pay_date)) : "")}${kv("Paid by", esc(inv.pay_method || ""))}</table></td></tr></table></td></tr>
+  <tr><td style="padding:10px 26px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e6e9f2;border-radius:10px;border-collapse:separate">
+      ${sect("Earnings")}${earn.map((x) => row(x, false)).join("") || `<tr><td colspan="2" style="padding:8px 12px;color:#999">—</td></tr>`}
+      ${ded.length ? sect("Deductions") + ded.map((x) => row(x, true)).join("") : ""}
+      <tr><td style="padding:14px 12px;font-size:16px;font-weight:bold;background:#f6f8fc">Total salary</td>
+        <td style="padding:14px 12px;font-size:20px;font-weight:bold;text-align:right;background:#f6f8fc;color:#0a7d3b;white-space:nowrap">${total < 0 ? "− " : ""}${fmt(total)}</td></tr>
+    </table></td></tr>
+  ${inv.status === "paid" ? `<tr><td style="padding:4px 26px 0"><span style="display:inline-block;border:2px solid #0a7d3b;color:#0a7d3b;border-radius:8px;padding:6px 14px;font-weight:bold;letter-spacing:2px">✔ PAID${inv.paid_at ? " · " + esc(new Date(inv.paid_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })) : ""}</span></td></tr>` : ""}
+  ${inv.note ? `<tr><td style="padding:14px 26px 0;font-size:13px;color:#333;white-space:pre-wrap">${esc(inv.note)}</td></tr>` : ""}
+  <tr><td style="padding:22px 26px 24px;font-size:13px;color:#333">Thank you for your work with Premvio. 💙<br><b>Premvio Team</b></td></tr>
+  <tr><td style="background:#f6f8fc;padding:14px 26px;font-size:11px;color:#7a8299;border-top:1px solid #e6e9f2">Premvio · ${esc(site.replace(/^https?:\/\//, ""))} · premvioapp@gmail.com<br>
+    This salary invoice was made by Premvio. Keep it for your records.</td></tr>
+</table></td></tr></table></body></html>`;
+}
+async function salaryInvoiceForm(inv, e) {
+  if (!e) return toast("Employee not found.", "error");
+  const { data: st } = await sb.from("app_settings").select("value").eq("key", "site_url").maybeSingle();
+  const site = ((st && st.value) || "https://premvio.app").replace(/\/+$/, "");
+  const d = new Date();
+  const cur = inv ? { ...inv, items: (inv.items || []).map((x) => ({ ...x })) }
+    : { period: new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10), items: [{ label: "Basic salary", amount: String(e.salary) }], note: "", pay_method: "", pay_date: "", status: "draft" };
+  openModal(`<h2>${inv ? "Salary invoice " + esc(inv.number) : "New salary invoice"}</h2>
+    <p class="small muted">${esc(e.full_name)} · ${esc(empRole(e.role))} · ${esc(e.email)}</p>
+    <form id="sif">
+      <div class="grid-2"><div><label>Salary month</label><input type="month" name="period" required value="${String(cur.period).slice(0, 7)}"></div>
+        <div><label>Pay date <span class="muted">(optional)</span></label><input type="date" name="pay_date" value="${esc(cur.pay_date || "")}"></div></div>
+      <label>Paid by <span class="muted">(optional, e.g. eSewa, Khalti, bank)</span></label><input name="pay_method" maxlength="80" value="${esc(cur.pay_method || "")}">
+      <label>Lines <span class="muted">(bonus = plus · deduction = minus)</span></label>
+      <div id="sil"></div>
+      <div class="row mt" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn sm soft" data-addl="1">+ Add bonus / extra</button><button type="button" class="btn sm soft" data-addl="-1">− Add deduction</button></div>
+      <div class="card mt row between" style="box-shadow:none"><span class="muted">Total salary</span><b id="sitot" style="font-size:1.2rem;color:var(--gold)"></b></div>
+      <label>Note on the invoice <span class="muted">(optional)</span></label><textarea name="note" rows="2" maxlength="1000" placeholder="e.g. Great work this month!">${esc(cur.note || "")}</textarea>
+      <div class="row mt" style="gap:8px;flex-wrap:wrap">
+        <button class="btn grow" data-act="save">💾 Save</button>
+        <button type="button" class="btn soft grow" data-act="preview">👁 Preview</button>
+        <button type="button" class="btn gold grow" data-act="send">📧 ${cur.sent_at ? "Send again" : "Send to email"}</button></div>
+      <div class="row mt" style="gap:8px;flex-wrap:wrap">
+        ${inv ? `<button type="button" class="btn sm ${inv.status === "paid" ? "ghost" : "success"}" data-act="paid">${inv.status === "paid" ? "Mark as not paid" : "✅ Mark as paid"}</button>` : ""}
+        <button type="button" class="btn sm ghost" data-act="print">🖨 Print / PDF</button></div>
+      ${inv?.sent_at ? `<p class="small muted mt">Last sent to ${esc(inv.sent_to || "")} on ${fmtDate(inv.sent_at)}</p>` : ""}
+    </form>`, (m) => {
+    const f = $("#sif", m), box = $("#sil", m);
+    const draw = () => {
+      box.innerHTML = cur.items.map((x, i) => `<div class="row" data-i="${i}" style="gap:6px;margin-top:6px">
+        <input class="grow" data-k="label" maxlength="100" value="${esc(x.label)}" placeholder="${Number(x.amount) < 0 ? "Deduction, e.g. Advance" : "e.g. Bonus"}">
+        <input data-k="amount" type="number" step="0.01" value="${esc(x.amount)}" style="width:130px;${Number(x.amount) < 0 ? "color:var(--red)" : ""}">
+        <button type="button" class="btn sm ghost" data-rml="${i}" ${cur.items.length < 2 ? "disabled" : ""}>✕</button></div>`).join("");
+      calc();
+    };
+    const sync = () => $$("[data-i]", box).forEach((r) => { const it = cur.items[Number(r.dataset.i)]; it.label = $('[data-k="label"]', r).value.trim(); it.amount = $('[data-k="amount"]', r).value; });
+    const calc = () => { const t = cur.items.reduce((a, x) => a + (Number(x.amount) || 0), 0); $("#sitot", m).textContent = money(t); };
+    const readAll = () => {
+      sync();
+      cur.period = f.period.value + "-01"; cur.pay_date = f.pay_date.value || null; cur.pay_method = f.pay_method.value.trim() || null; cur.note = f.note.value.trim() || null;
+      for (const x of cur.items) {
+        if (!x.label) throw new Error("Every line needs a name.");
+        if (!/^-?\d+(\.\d{1,2})?$/.test(String(x.amount).trim())) throw new Error(`Type a correct amount for "${x.label}".`);
+        x.amount = String(Number(x.amount));
+      }
+      if (!f.period.value) throw new Error("Choose the salary month.");
+    };
+    const save = async () => {
+      readAll();
+      const row = { employee_id: e.id, period: cur.period, items: cur.items, note: cur.note, pay_date: cur.pay_date, pay_method: cur.pay_method };
+      if (cur.id) { const { data, error } = await sb.from("salary_invoices").update(row).eq("id", cur.id).select().single(); if (error) throw error; Object.assign(cur, data); }
+      else { const { data, error } = await sb.from("salary_invoices").insert(row).select().single(); if (error) throw error; Object.assign(cur, data); }
+      return cur;
+    };
+    box.addEventListener("input", (ev) => { sync(); calc(); });
+    box.onclick = (ev) => { const b = ev.target.closest("[data-rml]"); if (!b) return; sync(); cur.items.splice(Number(b.dataset.rml), 1); draw(); };
+    $$("[data-addl]", m).forEach((b) => (b.onclick = () => { sync(); cur.items.push({ label: b.dataset.addl === "-1" ? "Deduction" : "Bonus", amount: b.dataset.addl === "-1" ? "-0" : "0" }); draw(); $$('[data-k="label"]', box).pop()?.select(); }));
+    const showPreview = (html) => openModal(`<h2>Preview ${esc(cur.number || "")}</h2>
+      <iframe sandbox="allow-same-origin" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:12px;background:#fff" srcdoc="${esc(html)}"></iframe>
+      <div class="row mt" style="gap:8px"><button class="btn soft grow" id="pvBack">← Back to edit</button><button class="btn gold grow" id="pvSend">📧 Send to ${esc(e.email)}</button></div>`, (pm) => {
+      $("#pvBack", pm).onclick = () => salaryInvoiceForm(cur, e);
+      $("#pvSend", pm).onclick = () => sendNow($("#pvSend", pm));
+    });
+    const sendNow = (btn) => busy(btn, async () => {
+      await save();
+      if (!(await sb.rpc("admin_gmail_ready")).data) throw new Error("Email is not connected yet. Do gmail-sender-google-script.js and run set-gmail-sender.sql first. You can use Print / PDF meanwhile.");
+      const { data, error } = await sb.rpc("admin_send_salary_invoice", { p_id: cur.id, p_html: salaryInvoiceHtml(cur, e, site) });
+      if (error) throw error;
+      closeModal(); toast(`📧 Invoice sent to ${data.to}.`, "success"); route();
+    });
+    $('[data-act="preview"]', m).onclick = (ev) => busy(ev.target, async () => { await save(); showPreview(salaryInvoiceHtml(cur, e, site)); });
+    $('[data-act="send"]', m).onclick = (ev) => sendNow(ev.target);
+    $('[data-act="print"]', m).onclick = (ev) => {
+      const w = window.open("", "_blank");   // open first (phones block pop-ups opened after waiting)
+      if (!w) return toast("Allow pop-ups for this site to print.", "error");
+      w.document.write("<p style='font-family:Arial;padding:20px'>Preparing invoice…</p>");
+      busy(ev.target, async () => {
+        try { await save(); } catch (er) { w.close(); throw er; }
+        w.document.open(); w.document.write(salaryInvoiceHtml(cur, e, site)); w.document.close(); setTimeout(() => w.print(), 500);
+      });
+    };
+    const paidBtn = $('[data-act="paid"]', m);
+    if (paidBtn) paidBtn.onclick = (ev) => busy(ev.target, async () => {
+      await save();
+      const paid = cur.status !== "paid";
+      const { error } = await sb.from("salary_invoices").update({ status: paid ? "paid" : (cur.sent_at ? "sent" : "draft"), paid_at: paid ? new Date().toISOString() : null }).eq("id", cur.id);
+      if (error) throw error;
+      closeModal(); toast(paid ? "Marked as paid. Press “Send again” to email the PAID copy." : "Marked as not paid.", "success"); route();
+    });
+    f.onsubmit = (ev) => { ev.preventDefault(); busy($('[data-act="save"]', m), async () => { await save(); closeModal(); toast("Saved.", "success"); route(); }); };
+    draw();
+  });
+}
+
 /* ---------- V83: invite links made by managers (proof of who brought each player) ---------- */
 const IL_RANGES = [["all", "All time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"]];
 async function invitelinks(v) {
