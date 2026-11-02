@@ -1290,6 +1290,16 @@ body.wa-mode .fab-help { display: none; }
 .sdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .sdot.on { background: #46d17d; box-shadow: 0 0 0 3px rgba(70, 209, 125, .2); } .sdot.away { background: var(--gold); } .sdot.off { background: #5b6478; }
 
+/* V91: terms & policies */
+.terms-agree { font-size: .86rem; line-height: 1.45; font-weight: 500; }
+.terms-agree a, .legal-body a { color: var(--blue); }
+.legal-tabs { display: flex; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; }
+.legal-tabs button { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; }
+.legal-tabs button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.legal-body { max-height: 58vh; overflow: auto; font-size: .9rem; line-height: 1.55; padding-right: 4px; }
+.legal-body h3 { margin: 16px 0 6px; font-size: 1rem; }
+.legal-body ul { margin: 4px 0; padding-left: 20px; } .legal-body li { margin: 3px 0; } .legal-body p { margin: 6px 0; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1332,7 +1342,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V90";   // shown in every staff menu so the owner can see which version is loaded
+const PV_BUILD = "V91";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -4658,7 +4668,8 @@ async function personView(v, id, back) {
       ${u.blocked ? `<span class="badge blocked">blocked</span>` : ""}</h2><div class="mono muted">${esc(u.member_id)}</div></div>
       <div style="text-align:right"><div class="small muted">Balance</div><div style="font-size:1.6rem;font-weight:800">${money(u.balance)}</div></div></div>
     <div class="info-grid mt">
-      ${[["Phone", u.phone], ["Email", staff ? "—" : u.email], ["Country", u.country], ["City", u.city], ["Street", u.street], ["KYC", u.kyc_status], ...(staff ? [] : [["Points", Number(u.points || 0)], ["Invite reward", u.referred_by ? (u.ref_rewarded ? "given" : "waiting for 1st order") : "—"]]), ["Joined", fmtDate(u.created_at)]]
+      ${[["Phone", u.phone], ["Email", staff ? "—" : u.email], ["Country", u.country], ["City", u.city], ["Street", u.street], ["KYC", u.kyc_status], ...(staff ? [] : [["Points", Number(u.points || 0)], ["Invite reward", u.referred_by ? (u.ref_rewarded ? "given" : "waiting for 1st order") : "—"],
+        ["Terms agreed", u.terms_accepted_at ? fmtDate(u.terms_accepted_at) + " (v" + (u.terms_version || "") + ")" : "not yet"]]), ["Joined", fmtDate(u.created_at)]]
         .filter(([, val]) => val).map(([k, val]) => `<div><div class="k">${k}</div><div class="v">${esc(val)}</div></div>`).join("")}
     </div>
     <div class="money-actions mt"><button class="btn deposit" id="dep">Deposit</button><button class="btn withdraw" id="wd">Withdraw</button></div>
