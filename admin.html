@@ -1286,7 +1286,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V84";   // shown in every staff menu so the owner can see which version is loaded
+const PV_BUILD = "V85";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -3299,7 +3299,7 @@ async function products(v) {
     ${table(["Photo", "Name", "Price", "Qty limits", "Form fields", "Status", "Pin", ""], data.map((p) => `<tr>
       <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}">` : `<div class="thumb"></div>`}</td>
       <td><b>${esc(p.name)}</b>${p.category ? ` <span class="badge">${esc(p.category)}</span>` : ""}<div class="small muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description)}</div></td>
-      <td>${productPriceCell(p)}</td><td class="small">${p.min_qty} – ${p.max_qty}</td>
+      <td>${productPriceCell(p)}</td><td class="small">${Number(p.min_qty) === 1 && Number(p.max_qty) === 1 ? "📦 fixed packs" : `${p.min_qty} – ${p.max_qty}`}</td>
       <td class="small">${productFieldsSummary(p.fields) || "—"}</td>
       <td><span class="badge ${p.active ? "active" : "cancelled"}">${p.active ? "visible" : "hidden"}</span>
         ${p.out_of_stock ? `<div><span class="badge rejected">out of stock</span></div>` : ""}
@@ -3358,8 +3358,8 @@ function pinModal(p) {
 
 // Order form field types for PRODUCTS (V34: option buttons / tick boxes with their own price, phone, email, date)
 const PRODUCT_FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["phone", "Phone number"],
-  ["email", "Email"], ["date", "Date"], ["choice", "Option buttons — customer picks ONE"], ["select", "Dropdown — customer picks ONE"],
-  ["multi", "Tick boxes — customer can pick MANY (prices add up)"], ["info", "Info to copy (you write it)"]];
+  ["email", "Email"], ["date", "Date"], ["choice", "Buttons — pick ONE"], ["select", "Dropdown — pick ONE"],
+  ["multi", "Tick boxes — pick MANY"], ["info", "Info to copy (you write it)"]];
 const OPTION_TYPES = ["choice", "select", "multi"];
 // Field types for payment methods (deposit / withdraw forms)
 const FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["select", "Dropdown (choose one)"], ["info", "Info to copy (you write it)"]];
@@ -3405,8 +3405,10 @@ async function productForm(p = {}) {
     <div class="grid-2"><div id="priceWrap"><label>Price per 1 (${CFG.CURRENCY})</label><input type="number" name="price" min="0" step="0.01" value="${p.price ?? ""}"></div>
     <div><label>Your cost per 1 (${CFG.CURRENCY}) <span class="muted">only you see it</span></label><input type="number" name="cost_price" min="0" step="0.01" value="${pc?.cost_price ?? ""}" placeholder="for the Profit page"></div>
     <div><label>Display order (lower = first)</label><input type="number" name="sort" value="${p.sort ?? 0}"></div>
-    <div><label>Minimum quantity</label><input type="number" name="min_qty" min="1" value="${p.min_qty ?? 1}"></div>
-    <div><label>Maximum quantity</label><input type="number" name="max_qty" min="1" value="${p.max_qty ?? 1000}"></div></div>
+    <div class="qtyBox"><label>Minimum quantity</label><input type="number" name="min_qty" min="1" value="${p.min_qty ?? 1}"></div>
+    <div class="qtyBox"><label>Maximum quantity</label><input type="number" name="max_qty" min="1" value="${p.max_qty ?? 1000}"></div></div>
+    <label class="row" style="gap:8px;margin-top:12px;color:var(--text)"><input type="checkbox" name="fixed_pack" style="width:auto" ${p.id && Number(p.min_qty) === 1 && Number(p.max_qty) === 1 ? "checked" : ""}>
+      <span>📦 <b>Fixed packs</b> — no quantity box, customer just picks a pack (e.g. 60 UC · NPR 150)</span></label>
     <label>Delivery charge (${CFG.CURRENCY}) <span class="muted">(0 = no delivery)</span></label>
     <input type="number" name="delivery_charge" min="0" step="0.01" value="${p.delivery_charge ?? 0}">
     <p class="small muted">💡 If the price depends on what the customer picks (e.g. 3 / 6 / 12 months), set the price to <b>0</b> and give each option its price below.</p>
@@ -3437,13 +3439,14 @@ async function productForm(p = {}) {
     <label>Ends <span class="muted">(shows a countdown)</span></label><input type="datetime-local" name="sale_ends_at" value="${toLocalInput(p.sale_ends_at)}"></div>
 
     <h3 class="mt">Order form for this product</h3>
-    <p class="small muted">Customers fill this in when they buy (quantity is always asked). Questions (text, number, phone, email, date) or choices
+    <p class="small muted">Customers fill this in when they buy. Questions (text, number, phone, email, date) or choices
       (option buttons, dropdown, tick boxes). Each option can add its own price.</p>
     <div id="fields"></div>
     <div class="row mt" style="flex-wrap:wrap;gap:8px">
       <button type="button" class="btn soft grow" id="addField">${ICONS.plus} Add field</button>
       <button type="button" class="btn soft grow" id="addChoice">🔘 Add choice (options)</button>
-      <button type="button" class="btn soft grow" id="addMonths">📅 Add “How many months?”</button></div>
+      <button type="button" class="btn soft grow" id="addMonths">📅 Add “How many months?”</button>
+      <button type="button" class="btn soft grow" id="addPacks">🎮 Add packs (UC, diamonds…)</button></div>
     <button class="btn block mt">Save product</button></form>`, (m) => {
     const f = $("#pf", m);
     const box = $("#fields", m);
@@ -3456,7 +3459,7 @@ async function productForm(p = {}) {
     const draw = () => {
       box.innerHTML = fields.length ? fields.map((fd, i) => `<div class="field-row" data-i="${i}">
         <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="${OPTION_TYPES.includes(fd.type) ? "Question, e.g. How many months?" : "Field name, e.g. Telegram username"}" required>
-          <select data-k="type" style="width:auto">${PRODUCT_FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+          <select data-k="type" style="width:auto;max-width:42%;flex:0 1 auto">${PRODUCT_FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
         ${OPTION_TYPES.includes(fd.type) ? `<div class="opt-list mt">
             <div class="row small muted" style="justify-content:space-between"><span>Options the customer can pick</span><span>Extra price · your cost (${CFG.CURRENCY})</span></div>
             ${(fd.options || []).map((o, j) => optRow(o, j, fd)).join("")}
@@ -3508,6 +3511,17 @@ async function productForm(p = {}) {
     const addF = (fd) => { sync(); fields.push(fd); draw(); $$('[data-k="label"]', box).pop()?.focus(); };
     $("#addField", m).onclick = () => addF({ id: newFieldId(), label: "", type: "text", required: true });
     $("#addChoice", m).onclick = () => addF({ id: newFieldId(), label: "", type: "choice", required: true, options: [{ label: "", price: "" }, { label: "", price: "" }] });
+    // V85: fixed packs = quantity always 1, the quantity box is hidden for the customer
+    const fixedSync = () => { const on = f.fixed_pack.checked; $$(".qtyBox", m).forEach((x) => x.classList.toggle("hidden", on)); if (on) { f.min_qty.value = 1; f.max_qty.value = 1; } };
+    f.fixed_pack.onchange = () => { if (!f.fixed_pack.checked && Number(f.max_qty.value) <= 1) f.max_qty.value = 1000; fixedSync(); };
+    fixedSync();
+    $("#addPacks", m).onclick = () => {
+      addF({ id: newFieldId(), label: "Choose pack", type: "choice", required: true,
+        options: ["60 UC", "325 UC", "660 UC", "1800 UC"].map((label) => ({ label, price: "" })) });
+      f.fixed_pack.checked = true; fixedSync();
+      if (!f.price.value) f.price.value = 0;
+      toast("Packs added. Change the names if needed and type the price of each pack. Price per 1 is set to 0.", "success");
+    };
     $("#addMonths", m).onclick = () => {
       addF({ id: newFieldId(), label: "How many months?", type: "choice", required: true,
         options: ["1 month", "3 months", "6 months", "12 months"].map((label) => ({ label, price: "" })) });
@@ -3545,7 +3559,7 @@ async function productForm(p = {}) {
         f.dataset.okMany = many.id;
         const row = $$(".field-row", box)[fields.indexOf(many)];
         row?.scrollIntoView({ block: "center", behavior: "smooth" });
-        return toast(`"${many.label}" is set to Tick boxes, so customers can pick several (e.g. 6 AND 12 months). Change it to "Option buttons — customer picks ONE". To keep tick boxes, press Save again.`, "error");
+        return toast(`"${many.label}" is set to Tick boxes, so customers can pick several (e.g. 6 AND 12 months). Change it to "Buttons — pick ONE". To keep tick boxes, press Save again.`, "error");
       }
       for (const fd of fields) {
         if (!fd.label) return toast("Every form field needs a name.", "error");
@@ -3574,7 +3588,10 @@ async function productForm(p = {}) {
       if (!isFree && f.price.value === "") return toast("Type the price (use 0 if the options carry the price).", "error");
       const price = f.price.value === "" ? 0 : Number(f.price.value);
       if (!(price >= 0)) return toast("Price must be 0 or more.", "error");
-      const minq = Math.max(1, Math.floor(Number(f.min_qty.value) || 1)), maxq = Math.max(minq, Math.floor(Number(f.max_qty.value) || minq));
+      const minq = f.fixed_pack.checked ? 1 : Math.max(1, Math.floor(Number(f.min_qty.value) || 1)),
+        maxq = f.fixed_pack.checked ? 1 : Math.max(minq, Math.floor(Number(f.max_qty.value) || minq));
+      if (f.fixed_pack.checked && !isFree && Number(f.price.value || 0) === 0 && !fields.some((fd) => ["choice", "select"].includes(fd.type) && (fd.options || []).some((o) => Number(o.price) > 0)))
+        return toast("Fixed packs: add a pack choice (🎮 Add packs) and type the price of each pack.", "error");
       const salePrice = isFree || f.sale_price.value === "" ? null : Number(f.sale_price.value);
       const saleStart = f.sale_starts_at.value ? new Date(f.sale_starts_at.value).toISOString() : null;
       const saleEnd = f.sale_ends_at.value ? new Date(f.sale_ends_at.value).toISOString() : null;
@@ -4734,7 +4751,7 @@ function mountFieldBuilder(box, fields, emptyText) {
   const draw = () => {
     box.innerHTML = fields.length ? fields.map((fd, i) => `<div class="field-row" data-i="${i}">
       <div class="row"><input class="grow" data-k="label" value="${esc(fd.label)}" placeholder="Field name, e.g. eSewa ID" required>
-        <select data-k="type" style="width:auto">${FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <select data-k="type" style="width:auto;max-width:42%;flex:0 1 auto">${FIELD_TYPES.map(([k, l]) => `<option value="${k}" ${fd.type === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       <div class="row mt">
         ${fd.type === "select" ? `<div class="grow opt-list">${(fd.options || []).map((o) => (typeof o === "string" ? o : o.label)).map((l, j) => `<div class="opt-edit" data-oi="${j}">
             <div class="row" style="gap:6px"><input class="grow" data-o="label" value="${esc(l)}" placeholder="Option, e.g. Kathmandu" maxlength="100">
