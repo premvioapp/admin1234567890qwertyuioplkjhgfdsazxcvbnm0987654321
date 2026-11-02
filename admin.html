@@ -1242,6 +1242,8 @@ body.wa-mode .fab-help { display: none; }
 .mg-limits { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; color: var(--muted); }
 .mg-limits b { color: var(--text); }
 
+#tot.tot-hint { font-size: .9rem !important; color: var(--muted) !important; font-weight: 600; }
+
 </style>
 <title>Premvio Admin</title>
 <meta name="robots" content="noindex">
@@ -1284,7 +1286,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V83";   // shown in every staff menu so the owner can see which version is loaded
+const PV_BUILD = "V84";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -3356,8 +3358,8 @@ function pinModal(p) {
 
 // Order form field types for PRODUCTS (V34: option buttons / tick boxes with their own price, phone, email, date)
 const PRODUCT_FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["phone", "Phone number"],
-  ["email", "Email"], ["date", "Date"], ["choice", "Option buttons (choose one)"], ["select", "Dropdown (choose one)"],
-  ["multi", "Tick boxes (choose many)"], ["info", "Info to copy (you write it)"]];
+  ["email", "Email"], ["date", "Date"], ["choice", "Option buttons — customer picks ONE"], ["select", "Dropdown — customer picks ONE"],
+  ["multi", "Tick boxes — customer can pick MANY (prices add up)"], ["info", "Info to copy (you write it)"]];
 const OPTION_TYPES = ["choice", "select", "multi"];
 // Field types for payment methods (deposit / withdraw forms)
 const FIELD_TYPES = [["text", "Short text"], ["textarea", "Long text"], ["number", "Number"], ["select", "Dropdown (choose one)"], ["info", "Info to copy (you write it)"]];
@@ -3537,6 +3539,14 @@ async function productForm(p = {}) {
       e.preventDefault();
       sync();
       const isFree = f.is_free.checked;
+      // V84: a months/years question as tick boxes lets customers pick 6 AND 12 months — warn once
+      const many = fields.find((fd) => fd.type === "multi" && (fd.options || []).some((o) => /\b(day|week|month|year)s?\b|mahina|महिना|बर्ष|वर्ष/i.test(o.label || "")));
+      if (many && f.dataset.okMany !== many.id) {
+        f.dataset.okMany = many.id;
+        const row = $$(".field-row", box)[fields.indexOf(many)];
+        row?.scrollIntoView({ block: "center", behavior: "smooth" });
+        return toast(`"${many.label}" is set to Tick boxes, so customers can pick several (e.g. 6 AND 12 months). Change it to "Option buttons — customer picks ONE". To keep tick boxes, press Save again.`, "error");
+      }
       for (const fd of fields) {
         if (!fd.label) return toast("Every form field needs a name.", "error");
         if (fd.type === "info") { if (!fd.value) return toast(`Write the text for "${fd.label}".`, "error"); fd.required = false; delete fd.placeholder; delete fd.options; continue; }
