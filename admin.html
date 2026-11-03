@@ -534,6 +534,12 @@ td .btn + .btn { margin-left: 6px; }
 .pm-tile:active { transform: scale(.97); }
 .pm-tile.on { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31, 162, 255, .15); }
 .pm-tile .pm-logo { width: 54px; height: 54px; }
+/* V92: Telegram-direct method (tap opens Telegram) */
+a.pm-tile { text-decoration: none; position: relative; }
+.pm-tile .pm-tg { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; background: #229ed9; color: #fff;
+  display: grid; place-items: center; padding: 4px; box-sizing: border-box; }
+.pm-tile .pm-tg svg { width: 100%; height: 100%; }
+#tgBox { padding: 2px 0 6px; }
 .pm-name { font-size: .82rem; font-weight: 700; text-align: center; line-height: 1.2; word-break: break-word; }
 .pm-panel .pm-logo { width: 46px; height: 46px; }
 .pm-info { white-space: pre-wrap; padding: 12px; border-radius: 12px; background: var(--card-2); font-weight: 600; border-left: 3px solid var(--blue); }
@@ -1342,7 +1348,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V91";   // shown in every staff menu so the owner can see which version is loaded
+const PV_BUILD = "V92";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -5174,12 +5180,21 @@ function pmAdminSummary(m) {
     (rows.length ? `<div class="small">${rows.map((r) => `<span class="muted">${esc(r.label)}:</span> <b>${esc(r.value)}</b>`).join(" · ")}</div>` : "");
 }
 async function methods(v) {
-  const { data, error } = await sb.from("payment_methods").select("*").order("kind").order("sort").order("id");
+  const [{ data, error }, agentsList, { data: maRows }] = await Promise.all([
+    sb.from("payment_methods").select("*").order("kind").order("sort").order("id"), loadAgents(),
+    sb.from("method_agents").select("method_id, agent_id")]);   // V92 (empty until SQL 61 is run)
   if (error) throw error;
+  const maMap = Object.fromEntries((maRows || []).map((r) => [r.method_id, r.agent_id]));
+  const agentCode = (id) => { const a = agentsList.find((x) => x.id === id); return a ? a.member_id : "deleted agent"; };
+  const depAll = data.filter((m) => m.kind === "deposit" && m.audience !== "agents");
+  const v92 = (m) => m.kind === "deposit"
+    ? (m.open_direct ? `<div class="small"><span class="badge agent">📲 Opens Telegram directly</span> <span class="mono">${esc(m.link || "no link!")}</span>${maMap[m.id] ? ` · agent <b class="mono">${esc(agentCode(maMap[m.id]))}</b>` : ""}</div>` : "")
+    : ((m.from_deposit_ids || []).length ? `<div class="small"><span class="badge pending">Only for deposits via</span> ${m.from_deposit_ids.map((id) => esc(depAll.find((d) => d.id === id)?.name || "deleted method")).join(", ")}</div>`
+      : `<div class="small muted">Everyone can use it</div>`);
   const card = (m) => `<div class="pm-card ${m.active ? "" : "off"}">
     <div class="pm-logo">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>${esc((m.name || "?").slice(0, 2).toUpperCase())}</span>`}</div>
     <div class="grow"><b>${esc(m.name)}</b> ${m.code === "premviocash" ? `<span class="badge agent">built-in</span>` : ""} ${m.active ? "" : `<span class="badge cancelled">hidden</span>`}
-      ${pmAdminSummary(m)}<div class="small muted pm-details">${esc(m.details || "")}</div>
+      ${v92(m)}${pmAdminSummary(m)}<div class="small muted pm-details">${esc(m.details || "")}</div>
       <div class="small muted">${m.min_amount != null ? "Min " + money(m.min_amount) : ""}${m.max_amount != null ? " · Max " + money(m.max_amount) : ""}
         ${(m.fields || []).length ? " · Fields: " + m.fields.map((f) => esc(f.label)).join(", ") : ""}</div></div>
     <div class="pm-actions"><button class="btn sm soft" data-edit="${m.id}">Edit</button>
@@ -5193,8 +5208,9 @@ async function methods(v) {
     <div class="card"><div class="row between"><h2 style="margin:0;color:var(--red)">Withdrawal methods</h2>
       <button class="btn sm" data-add="withdraw">${ICONS.plus} Add withdrawal method</button></div>
       <div class="mt">${wd.map(card).join("")}</div></div>`;
-  $$("[data-add]", v).forEach((b) => (b.onclick = () => methodForm({ kind: b.dataset.add })));
+  $$("[data-add]", v).forEach((b) => (b.onclick = () => methodForm({ kind: b.dataset.add }, agentsList, { dep: depAll, maMap })));
   bindMethodButtons(v, data);
+  $$("[data-edit]", v).forEach((b) => (b.onclick = () => methodForm(data.find((m) => m.id == b.dataset.edit), agentsList, { dep: depAll, maMap })));
 }
 function bindMethodButtons(v, data) {
   $$("[data-edit]", v).forEach((b) => (b.onclick = () => methodForm(data.find((m) => m.id == b.dataset.edit))));
@@ -5236,8 +5252,10 @@ async function agentmethods(v) {
   $$("[data-edit]", v).forEach((b) => (b.onclick = () => methodForm(data.find((m) => m.id == b.dataset.edit), agentsList)));
 }
 
-function methodForm(m, agentsList) {
+function methodForm(m, agentsList, ext = {}) {
   const builtin = m.code === "premviocash", dep = m.kind === "deposit", forAgents = dep && m.audience === "agents";
+  const custDep = dep && !forAgents, depList = ext.dep || [], maMap = ext.maMap || {};   // V92
+  const fromIds = new Set(m.from_deposit_ids || []);
   const chosen = new Set(m.agent_ids || []);
   const fields = JSON.parse(JSON.stringify(m.fields || []));
   openModal(`<h2>${m.id ? "Edit" : "Add"} ${forAgents ? "agent deposit" : dep ? "deposit" : "withdrawal"} method</h2><form id="mf2">
@@ -5245,6 +5263,16 @@ function methodForm(m, agentsList) {
     <div class="row"><div class="pm-logo big" id="lprev">${m.logo_url ? `<img src="${esc(m.logo_url)}" alt="">` : `<span>LOGO</span>`}</div>
       <input type="file" name="logo" accept="image/*"></div>
     <label>Name</label><input name="mname" required maxlength="40" value="${esc(m.name || "")}" placeholder="${dep ? "e.g. eSewa, Khalti, Bank, Telegram 2" : "e.g. eSewa, Bank transfer"}">
+    ${custDep ? `<div class="setting-row tg-direct"><div><b>📲 Open Telegram directly</b><div class="small muted">Tap on the logo opens this Telegram ID. No form, no screenshot.</div></div>
+      <label class="switch" style="margin:0"><input type="checkbox" name="open_direct" ${m.open_direct ? "checked" : ""}><span></span></label></div>
+    <div id="tgBox">
+      <label>Telegram ID <span style="color:var(--red)">*</span></label>
+      <input name="tglink" maxlength="300" value="${esc(m.open_direct ? m.link || "" : "")}" placeholder="@agent_ram or https://t.me/agent_ram">
+      <p class="small muted" id="tgHint"></p>
+      <label>Agent behind this Telegram ID <span class="muted">(their top-ups count as deposits with this method)</span></label>
+      <select name="tg_agent"><option value="">— nobody / not an agent —</option>
+        ${(agentsList || []).map((a) => `<option value="${a.id}" ${maMap[m.id] === a.id ? "selected" : ""}>${esc(a.member_id)} · ${esc(a.full_name)}${a.city ? " · " + esc(a.city) : ""}${a.blocked ? " (blocked)" : ""}</option>`).join("")}</select>
+    </div><div id="formBox">` : ""}
     ${dep ? `<label style="color:var(--red)">Red notice <span class="muted">(optional — shown in red at the top of this method)</span></label>
     <textarea name="notice" maxlength="1000" rows="2" placeholder="e.g. Only send from your own account. Deposits after 10 PM are added next morning.">${esc(m.notice || "")}</textarea>
     <label>Payment details <span class="muted">(you choose each name — ${forAgents ? "the agent" : "the customer"} sees it with a Copy button)</span></label>
@@ -5264,6 +5292,14 @@ function methodForm(m, agentsList) {
       <div><input type="number" name="pay_rate" min="0" step="0.0001" value="${m.pay_rate ?? ""}" placeholder="151" aria-label="Rate in ${CFG.CURRENCY}" inputmode="decimal"><div class="small muted">Rate</div></div>
       <span class="cur-t">${CFG.CURRENCY}</span></div>
     <p class="small muted" id="curHint"></p>` : ""}
+    ${custDep ? `</div>` : ""}
+    ${!dep ? `<h3 class="mt">Who can use it</h3>
+      <div class="seg"><label><input type="radio" name="wdwho" value="all" ${fromIds.size ? "" : "checked"}> Everyone</label>
+        <label><input type="radio" name="wdwho" value="some" ${fromIds.size ? "checked" : ""}> Only players who deposited with…</label></div>
+      <div id="wdPick" class="${fromIds.size ? "" : "hidden"}"><div class="ag-list">${depList.map((d) => `<label class="ag-row">
+        <input type="checkbox" value="${d.id}" ${fromIds.has(d.id) ? "checked" : ""}><span class="grow">${esc(d.name)}</span>
+        <span class="small muted">${d.open_direct ? "📲 Telegram" : ""}${d.active ? "" : " · hidden"}</span></label>`).join("") || `<p class="small muted">No deposit methods yet.</p>`}</div>
+        <p class="small muted">Players with no deposit record yet (old balance, bonus, balance you added) still see every method.</p></div>` : ""}
     <label>Display order (lower = first)</label><input type="number" name="sort" value="${m.sort ?? 0}">
     ${forAgents ? `<label>Which agents can use it</label>
       <div class="seg"><label><input type="radio" name="who" value="all" ${chosen.size ? "" : "checked"}> All agents</label>
@@ -5275,6 +5311,7 @@ function methodForm(m, agentsList) {
           <span class="grow">${esc(a.full_name)}</span><span class="small muted">${esc(a.city || "")}${a.blocked ? " · blocked" : ""}</span></label>`).join("") || `<p class="small muted">No agents yet.</p>`}</div>
         <p class="small muted" id="agCount"></p></div>` : ""}
     <div class="setting-row"><b>Active (visible)</b><label class="switch" style="margin:0"><input type="checkbox" name="active" ${m.active !== false ? "checked" : ""}><span></span></label></div>
+    ${custDep ? `<div id="formBox2">` : ""}
     ${dep ? `<h3 class="mt">What they must send</h3>
       ${forAgents ? "" : `<div class="setting-row"><div><b>Ask the amount</b><div class="small muted">Off = they don't type an amount. You type it when you approve.</div></div>
         <label class="switch" style="margin:0"><input type="checkbox" name="ask_amount" ${m.ask_amount !== false ? "checked" : ""}><span></span></label></div>`}
@@ -5286,8 +5323,19 @@ function methodForm(m, agentsList) {
     <h3 class="mt">Fields they fill in</h3>
     <p class="small muted">${dep ? "Only the fields you add here are shown (plus the amount / screenshot if switched on above). Add e.g. “Transaction ID” or “Sender number”." : "Amount is always asked. Add e.g. “eSewa ID”, “Account name”, “Bank account number”."}</p>
     <div id="mfields"></div><button type="button" class="btn soft block mt" id="addMF">${ICONS.plus} Add field</button>`}
+    ${custDep ? `</div>` : ""}
     <button class="btn block mt" id="saveM">Save method</button></form>`, (md) => {
     const f = $("#mf2", md);
+    // V92: Telegram direct switch hides the normal form parts
+    if (f.open_direct) {
+      const sw = () => { const on = f.open_direct.checked;
+        $("#tgBox", md).classList.toggle("hidden", !on); $("#formBox", md).classList.toggle("hidden", on); $("#formBox2", md).classList.toggle("hidden", on); };
+      f.open_direct.onchange = sw; sw();
+      const th = () => { const v = f.tglink.value.trim(), h = pvLink(v);
+        $("#tgHint", md).innerHTML = !v ? "" : h ? `Opens: <a href="${esc(h)}" target="_blank" rel="noopener">${esc(h)}</a>` : `<span style="color:var(--red)">Type a Telegram username like @agent_ram.</span>`; };
+      f.tglink.oninput = th; th();
+    }
+    if (f.wdwho) $$('[name="wdwho"]', md).forEach((r) => (r.onchange = () => $("#wdPick", md).classList.toggle("hidden", f.wdwho.value !== "some")));
     const fb = builtin ? null : mountFieldBuilder($("#mfields", md), fields, dep ? "No fields added." : "No extra fields — only the amount.");
     if (f.pay_currency) {
       const ch = () => { const c = f.pay_currency.value.trim().toUpperCase(), r = Number(f.pay_rate.value);
@@ -5334,7 +5382,17 @@ function methodForm(m, agentsList) {
         agent_ids = $$(".ag-row input:checked", md).map((x) => x.value);
         if (!agent_ids.length) return toast("Choose at least one agent, or pick “All agents”.", "error");
       }
-      if (mn != null && mx != null && mn > mx) return toast("Minimum can't be more than maximum.", "error");
+      const direct = !!(f.open_direct && f.open_direct.checked);
+      let tgLinkV = null, from_deposit_ids = null;
+      if (direct) {
+        tgLinkV = pvLink(f.tglink.value);
+        if (!tgLinkV) return toast("Type the Telegram ID (e.g. @agent_ram).", "error");
+      }
+      if (f.wdwho && f.wdwho.value === "some") {
+        from_deposit_ids = $$("#wdPick input:checked", md).map((x) => Number(x.value));
+        if (!from_deposit_ids.length) return toast("Tick at least one deposit method, or choose “Everyone”.", "error");
+      }
+      if (!direct && mn != null && mx != null && mn > mx) return toast("Minimum can't be more than maximum.", "error");
       const link = f.link ? pvLink(f.link.value) : m.link || null;
       if (f.link && f.link.value.trim() && !link) return toast("Button link: type a Telegram username like @premvio, or a link starting with https://", "error");
       let pay_currency = "", pay_rate = null;
@@ -5363,11 +5421,23 @@ function methodForm(m, agentsList) {
           row.proof_mode = f.proof_mode.value; row.ask_amount = forAgents ? false : f.ask_amount.checked;
           row.detail_rows = detail_rows; row.notice = f.notice.value.trim();
           row.pay_currency = pay_currency; row.pay_rate = pay_rate;
-        }
-        const { error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id) : await sb.from("payment_methods").insert(row);
+          if (custDep) {
+            row.open_direct = direct;
+            if (direct) row.link = tgLinkV;
+          }
+        } else row.from_deposit_ids = from_deposit_ids;
+        const { data: saved, error } = m.id ? await sb.from("payment_methods").update(row).eq("id", m.id).select("id").maybeSingle()
+          : await sb.from("payment_methods").insert(row).select("id").single();
         if (error && /detail_rows|notice/.test(error.message || "")) throw new Error("Database update needed: run 47-update-deposit-details.sql in Supabase, then try again.");
         if (error && /pay_currency|pay_rate/.test(error.message || "")) throw new Error("Database update needed: run 48-update-deposit-currency.sql in Supabase, then try again.");
+        if (error && /open_direct|from_deposit_ids/.test(error.message || "")) throw new Error("Database update needed: run 61-update-telegram-direct.sql in Supabase, then try again.");
         if (error) throw error;
+        if (custDep) {   // V92: agent behind the Telegram ID
+          const id = m.id || saved?.id;
+          const ag = direct ? f.tg_agent.value : "";
+          if (id && ag) { const { error: e2 } = await sb.from("method_agents").upsert({ method_id: id, agent_id: ag, updated_at: new Date().toISOString() }); if (e2) throw e2; }
+          else if (id && maMap[id]) { const { error: e2 } = await sb.from("method_agents").delete().eq("method_id", id); if (e2) throw e2; }
+        }
         closeModal(); toast("Method saved.", "success"); route();
       });
     };
