@@ -318,6 +318,10 @@ td .btn + .btn { margin-left: 6px; }
 .otp { font-family: ui-monospace, Menlo, monospace; font-size: 1.6rem; letter-spacing: .5em; text-align: center; }
 .steps { padding-left: 20px; margin: 8px 0; } .steps li { margin: 6px 0; }
 .doc-preview { margin-top: 10px; border-radius: 12px; max-height: 220px; object-fit: contain; background: var(--bg-2); width: 100%; }
+/* V93: KYC rejected → send a document to the security department */
+.sec-ask { text-align: center; padding: 16px 12px; border: 1px solid rgba(255, 92, 92, .45); background: rgba(255, 92, 92, .07); border-radius: 14px; }
+.sec-ask .big { font-size: 2rem; }
+.sec-ask b { display: block; color: var(--red); font-size: 1.02rem; margin-top: 4px; }
 .photo-ask { border: 1px dashed var(--orange); background: rgba(255, 159, 67, .07); border-radius: 12px; padding: 12px; margin-top: 12px; }
 
 /* ---------- refunds ---------- */
@@ -1348,7 +1352,7 @@ else if(!PV_CONFIG.SUPABASE_ANON_KEY||/PASTE/.test(PV_CONFIG.SUPABASE_ANON_KEY))
 /* ============ PREMVIO — shared helpers ============ */
 if (window.pvDead) throw new Error("stopped");
 const CFG = window.PV_CONFIG;
-const PV_BUILD = "V92";   // shown in every staff menu so the owner can see which version is loaded
+const PV_BUILD = "V93";   // shown in every staff menu so the owner can see which version is loaded
 // Each panel keeps its own login, so logging out of one never logs out the others.
 // agent.html and agent-deposit.html share the agent login (log in once, use both).
 const PV_PANEL = /admin\.html/i.test(location.pathname) ? "admin" : /agent(-deposit)?\.html/i.test(location.pathname) ? "agent"
@@ -2180,7 +2184,7 @@ async function teamThread(v, id, opts) {
 </script>
 <script>
 /* ============ PREMVIO — Admin panel (v2) ============ */
-const AD = { me: null, stats: {}, channel: null, orderFilter: "pending", userQ: "", wdFilter: "pending", kycFilter: "pending", txType: "all", staffQ: "" };
+const AD = { me: null, stats: {}, channel: null, orderFilter: "pending", userQ: "", wdFilter: "pending", kycFilter: "unchecked", txType: "all", staffQ: "" };
 const root = $("#root");
 
 sb.auth.getSession().then(async ({ data }) => {
@@ -2403,7 +2407,7 @@ async function dashboard(v) {
   const max = Math.max(1, ...(daily || []).map((d) => Number(d.sales)));
   v.innerHTML = `<div class="stats">
     ${[["Sales today", money(s.sales_today)], ["Deposits today", money(s.loads_today)], ["Pending orders", s.pending_orders],
-       ["Deposit requests", s.pending_deposits ?? 0], ["Agent deposits", s.pending_agent_deposits ?? 0], ["Withdrawal requests", s.pending_payouts ?? 0], ["Pending KYC", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
+       ["Deposit requests", s.pending_deposits ?? 0], ["Agent deposits", s.pending_agent_deposits ?? 0], ["Withdrawal requests", s.pending_payouts ?? 0], ["KYC to check", s.pending_kyc], ["Refund requests", s.pending_refunds ?? 0], ["Active withdrawal codes", s.pending_withdrawals], ["Customers", s.customers],
        ["Agents", s.agents], ["Customer balances", money(s.customer_balance)], ["Agent balances", money(s.agent_balance)]]
       .map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v">${val ?? 0}</div></div>`).join("")}
   </div>
@@ -4811,20 +4815,39 @@ async function personView(v, id, back) {
 }
 
 /* ---------------- KYC ---------------- */
+// V93: KYC is approved automatically. Staff check later: Approve = checked (player not told), Reject = any time (withdrawals stop,
+// player is asked to send a document to the security department). The reason is private (kyc_reviews).
+const KYC_TABS = [["unchecked", "Not checked yet"], ["checked", "Checked ✓"], ["rejected", "Rejected"], ["all", "All"]];
 async function kyc(v) {
-  let q = sb.from("kyc").select("*, profiles(full_name, member_id, email, phone, country)").order("submitted_at", { ascending: false }).limit(300);
-  if (AD.kycFilter !== "all") q = q.eq("status", AD.kycFilter);
+  if (!KYC_TABS.some(([k]) => k === AD.kycFilter)) AD.kycFilter = "unchecked";
+  let q = sb.from("kyc").select("*, profiles(full_name, member_id, email, phone, country, balance)").order("submitted_at", { ascending: false }).limit(300);
+  if (AD.kycFilter === "unchecked") q = q.eq("status", "approved").eq("checked", false);
+  else if (AD.kycFilter === "checked") q = q.eq("status", "approved").eq("checked", true);
+  else if (AD.kycFilter === "rejected") q = q.eq("status", "rejected");
   const { data, error } = await q;
+  if (error && /checked/.test(error.message || "")) throw new Error("Database update needed: run 62-update-auto-kyc.sql in Supabase, then open this page again.");
   if (error) throw error;
-  v.innerHTML = chips([["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]], AD.kycFilter, "kf") +
-    table(["Member", "Name on document", "Document", "Region / City", "Submitted", "Status", ""], data.map((k) => `<tr>
-      <td>${who(k.profiles)}<div class="small muted">${esc(k.profiles?.phone || "")}</div></td><td><b>${esc(k.full_name)}</b></td>
+  const ids = data.map((k) => k.user_id);
+  const { data: revs } = ids.length ? await sb.from("kyc_reviews").select("user_id, action, note, staff_id, created_at").in("user_id", ids).order("created_at", { ascending: false }) : { data: [] };
+  const last = {}; (revs || []).forEach((r) => { if (!last[r.user_id]) last[r.user_id] = r; });
+  const staffIds = [...new Set(Object.values(last).map((r) => r.staff_id).filter(Boolean))];
+  const { data: staff } = staffIds.length ? await sb.from("profiles").select("id, member_id").in("id", staffIds) : { data: [] };
+  const sName = (id) => (staff || []).find((x) => x.id === id)?.member_id || "";
+  const state = (k) => k.status === "rejected" ? `<span class="badge rejected">rejected</span>`
+    : k.status === "approved" && !k.checked ? `<span class="badge pending">not checked</span>`
+    : k.status === "approved" ? `<span class="badge completed">checked ✓</span>` : `<span class="badge ${k.status}">${k.status}</span>`;
+  v.innerHTML = `<p class="muted small">Players are approved automatically when they send KYC, so they can withdraw at once. Check them here:
+      <b>Approve</b> = checked (the player is not told). <b>Reject</b> works any time, also later for suspicious activity — withdrawals stop and the player is asked to send a document to the security department.</p>` +
+    chips(KYC_TABS, AD.kycFilter, "kf") +
+    table(["Member", "Name on document", "Document", "Region / City", "Sent", "Check", ""], data.map((k) => { const r = last[k.user_id]; return `<tr>
+      <td>${who(k.profiles)}<div class="small muted">${esc(k.profiles?.phone || "")}</div><div class="small muted">Balance ${money(k.profiles?.balance || 0)}</div></td><td><b>${esc(k.full_name)}</b></td>
       <td>${esc(k.doc_type)}<div class="mono small">${esc(k.doc_number)}</div></td><td>${esc(k.region)}, ${esc(k.city)}</td>
       <td class="small">${fmtDate(k.submitted_at)}</td>
-      <td><span class="badge ${k.status}">${k.status}</span>${k.note ? `<div class="small muted">${esc(k.note)}</div>` : ""}</td>
-      <td style="white-space:nowrap">${k.photo_path ? `<button class="btn sm soft" data-photo="${esc(k.photo_path)}">📄 Photo</button>` : k.photo_required ? `<span class="small muted">photo asked</span> ` : ""}
-        ${k.status === "pending" ? `<button class="btn sm success" data-ok="${k.user_id}">Approve</button><button class="btn sm ghost" data-no="${k.user_id}">Reject</button>` : ""}</td>
-    </tr>`), "No KYC submissions");
+      <td>${state(k)}${r ? `<div class="small muted">${r.action === "rejected" ? "Rejected" : "Approved"} ${fmtDate(r.created_at)}${r.staff_id ? " · " + esc(sName(r.staff_id)) : ""}</div>${r.note ? `<div class="small" style="color:var(--red)">${esc(r.note)}</div>` : ""}` : ""}</td>
+      <td style="white-space:nowrap">${k.photo_path ? `<button class="btn sm soft" data-photo="${esc(k.photo_path)}">📄 Photo</button> ` : ""}
+        ${k.status === "rejected" || !k.checked ? `<button class="btn sm success" data-ok="${k.user_id}">Approve</button>` : ""}
+        ${k.status !== "rejected" ? `<button class="btn sm ghost" data-no="${k.user_id}">Reject</button>` : ""}</td>
+    </tr>`; }), "Nothing here");
   $$("[data-kf]", v).forEach((c) => (c.onclick = () => { AD.kycFilter = c.dataset.kf; route(); }));
   $$("[data-photo]", v).forEach((b) => (b.onclick = async () => {
     const { data: u, error } = await sb.storage.from("kyc").createSignedUrl(b.dataset.photo, 600);
@@ -4833,21 +4856,22 @@ async function kyc(v) {
       <p class="small muted mt">This private link works for 10 minutes. <a href="${esc(u.signedUrl)}" target="_blank" rel="noopener">Open full size</a></p>`);
   }));
   $$("[data-ok]", v).forEach((b) => (b.onclick = async () => {
+    const k = data.find((x) => x.user_id === b.dataset.ok);
+    if (k?.status === "rejected" && !(await confirmBox("Approve again?", "Only if the security department got good documents. The player can withdraw again and gets a notification.", "Approve"))) return;
     const { error } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.ok, p_approve: true, p_note: null });
     if (error) return toast(errMsg(error), "error");
-    toast("KYC approved.", "success"); refreshCounts(); route();
+    toast(k?.status === "rejected" ? "Approved — withdrawals are open again." : "Marked as checked ✓", "success"); refreshCounts(); route();
   }));
   $$("[data-no]", v).forEach((b) => (b.onclick = () => openModal(`<h2>Reject KYC</h2><form id="rf">
-    <label>Reason (shown to customer)</label><input name="note" required maxlength="200" placeholder="e.g. Document number doesn't match">
-    <label class="row" style="color:var(--text)"><input type="checkbox" name="photo" checked style="width:auto">
-      Ask the customer to upload a photo of the document</label>
+    <p class="small muted">Withdrawals stop now. The player sees: “Please send a document to the security department. Message customer support to get the email address.”</p>
+    <label>Reason <span class="muted">(only staff see it)</span></label><input name="note" required maxlength="200" placeholder="e.g. Same document as another account / suspicious activity">
     <button class="btn danger block mt">Reject</button></form>`, (m) => {
     $("#rf", m).onsubmit = (e) => {
       e.preventDefault();
       busy($("button", e.target), async () => {
-        const { error } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.no, p_approve: false, p_note: e.target.note.value.trim(), p_require_photo: e.target.photo.checked });
+        const { error } = await sb.rpc("admin_review_kyc", { p_user: b.dataset.no, p_approve: false, p_note: e.target.note.value.trim() });
         if (error) throw error;
-        closeModal(); toast("KYC rejected.", "success"); refreshCounts(); route();
+        closeModal(); toast("KYC rejected. Withdrawals are stopped.", "success"); refreshCounts(); route();
       });
     };
   })));
